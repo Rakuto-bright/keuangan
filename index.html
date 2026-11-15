@@ -171,17 +171,19 @@ function restock(pid){
   const d0=D();
   if(!pid){if(!d0.products.length)return alert('Tambah barang dulu.');return pickProd(restock)}
   const p=d0.products.find(x=>x.id==pid),us=[p.unit||'pcs',...(p.unit2?[p.unit2]:[])];
-  form('Restock '+esc(p.name),[{k:'q',l:'Jumlah masuk',t:'number'},{k:'u',l:'Satuan',o:us.map(u=>[u,u])},{k:'h',l:'Harga beli per satuan tersebut (Rp)',t:'number'},{k:'w',l:'Dibayar dari',o:wopts()},{k:'d',l:'Waktu',t:'datetime-local',v:now()}],d=>{
+  form('Restock '+esc(p.name),[{k:'q',l:'Jumlah masuk',t:'number'},{k:'u',l:'Satuan',o:us.map(u=>[u,u])},{k:'h',l:'Harga beli per satuan utama (Rp)',t:'number'},{k:'w',l:'Dibayar dari',o:wopts()},{k:'d',l:'Waktu',t:'datetime-local',v:now()}],d=>{
     const q=+d.q,f=p.unit2&&d.u==p.unit2?(p.conv||1):1,h=+d.h;
-    p.stock+=q/f;p.cost=h*f;
-    d0.tx.push({id:uid(),d:d.d,t:'out',a:q*h,w:d.w,c:'Restock',n:`${p.name} x${fmtN(q)} ${d.u}`,restock:{p:p.id,q:q/f}});
+    p.stock+=q/f;p.cost=h;
+    d0.tx.push({id:uid(),d:d.d,t:'out',a:Math.round(q/f*h),w:d.w,c:'Restock',n:`${p.name} x${fmtN(q)} ${d.u}`,restock:{p:p.id,q:q/f}});
   });
 }
 const UNITS=['Pcs','Bungkus','Pak','Kotak','Kemasan','Botol','Kaleng','Kg','Gram','Liter','Lusin','Dus','Karung'];
 function pForm(p,ok){
-  form(p?'Ubah barang':'Tambah barang',[{k:'n',l:'Nama barang',v:p?p.name:''},{k:'ct',l:'Kategori',r:0,v:p?p.cat:''},{k:'u',l:'Satuan utama (mis. Bungkus)',v:p?p.unit:'Pcs',dl:UNITS},{k:'u2',l:'Satuan kedua (opsional, lebih kecil)',r:0,v:p?p.unit2:'',dl:UNITS},{k:'cv',l:'Nilai konversi: 1 satuan utama = … satuan kedua',t:'number',r:0,v:p&&p.unit2?p.conv:''},{k:'pr',l:'Harga jual per satuan utama (Rp)',t:'number',v:p?p.price:''},{k:'c',l:'Harga beli per satuan utama (Rp)',t:'number',v:p?p.cost:0},{k:'s',l:'Stok (dalam satuan utama)',t:'number',v:p?p.stock:0},{k:'mn',l:'Beri notifikasi saat stok tinggal ≤',t:'number',v:p?mn(p):5}],d=>{
+  form(p?'Ubah barang':'Tambah barang',[{k:'n',l:'Nama barang',v:p?p.name:''},{k:'ct',l:'Kategori',r:0,v:p?p.cat:''},{k:'u',l:'Satuan utama (mis. Bungkus)',v:p?p.unit:'Pcs',dl:UNITS},{k:'u2',l:'Satuan kedua (opsional, lebih kecil)',r:0,v:p?p.unit2:'',dl:UNITS},{k:'cv',l:'Nilai konversi: 1 satuan utama = … satuan kedua',t:'number',r:0,v:p&&p.unit2?p.conv:''},{k:'pr',l:'Harga jual (Rp)',t:'number',v:p?(p.psel==2&&p.price2!=null?p.price2:p.price):''},{k:'pu',l:'Harga jual di atas adalah per…',o:[['1','Satuan utama'],['2','Satuan kedua']],v:p&&p.psel==2?'2':'1'},{k:'c',l:'Harga beli per satuan utama (Rp)',t:'number',v:p?p.cost:0},{k:'s',l:'Stok (dalam satuan utama)',t:'number',v:p?p.stock:0},{k:'mn',l:'Beri notifikasi saat stok tinggal ≤',t:'number',v:p?mn(p):5}],d=>{
     if(d.u2&&!(+d.cv>0)){alert('Isi nilai konversi untuk satuan kedua.');return false}
-    ok({name:d.n,cat:d.ct,unit:d.u,unit2:d.u2,conv:+d.cv||1,price:+d.pr,cost:+d.c,stock:+d.s,min:+d.mn});
+    if(d.pu=='2'&&!d.u2){alert('Isi satuan kedua dulu, atau pilih harga jual per satuan utama.');return false}
+    const cv=+d.cv||1,pr=+d.pr,c2=d.pu=='2'&&d.u2;
+    ok({name:d.n,cat:d.ct,unit:d.u,unit2:d.u2,conv:cv,price:c2?pr*cv:pr,price2:d.u2?(c2?pr:Math.round(pr/cv*100)/100):null,psel:c2?2:1,cost:+d.c,stock:+d.s,min:+d.mn});
   });
 }
 function addP(){pForm(null,o=>D().products.push(Object.assign({id:uid()},o)))}
@@ -219,7 +221,7 @@ async function exportXls(){
 let DR=null;
 const fmtN=n=>String(Math.round(n*100)/100).replace('.',',');
 const mn=p=>p.min==null?5:p.min;
-const uprice=(p,u)=>p.unit2&&u==p.unit2?Math.round(p.price/(p.conv||1)*100)/100:p.price;
+const uprice=(p,u)=>p.unit2&&u==p.unit2?(p.price2!=null?p.price2:Math.round(p.price/(p.conv||1)*100)/100):p.price;
 const sc=(d,id,ym)=>{const a=d.tx.filter(x=>x.s==id&&x.d.startsWith(ym)),b=(d.sales||[]).filter(v=>v.s==id&&v.d.startsWith(ym));return{sales:a.reduce((s,x)=>s+x.a,0)+b.reduce((s,v)=>s+v.total,0),comm:a.reduce((s,x)=>s+(x.comm||0),0)+b.reduce((s,v)=>s+(v.comm||0),0)}};
 const invT=x=>{const sub=x.items.reduce((a,i)=>a+i.tot,0),dc=Math.min(x.disc||0,sub),tx=(sub-dc)*(x.tax||0)/100;return{sub,tx,total:Math.max(0,sub-dc+tx+(x.fee||0))}};
 const pdv=x=>x.party?(x.paidOn?Math.min(+x.paid||0,invT(x).total):0):invT(x).total;
@@ -457,7 +459,7 @@ function txv(d){
 }
 function stok(d){
   return `<h3>Stok barang</h3>${d.products.map(p=>`<div class="card"><div class="li"><b>${esc(p.name)}</b><span><button class="x" onclick="editP('${p.id}')">✎</button><button class="x" onclick="delP('${p.id}')" aria-label="Hapus">×</button></span></div>
-  <div class="li"><span class="${p.stock<=mn(p)?'out':''}">Stok: <b>${fmtN(p.stock)} ${esc(p.unit||'pcs')}</b></span><span>Jual ${rp(p.price)}/${esc(p.unit||'pcs')}</span></div>
+  <div class="li"><span class="${p.stock<=mn(p)?'out':''}">Stok: <b>${fmtN(p.stock)} ${esc(p.unit||'pcs')}</b></span><span>Jual ${rp(p.price)}/${esc(p.unit||'pcs')}${p.unit2?' · '+rp(uprice(p,p.unit2))+'/'+esc(p.unit2):''}</span></div>
   <div class="li"><small>Nilai stok ${rp(p.stock*p.cost)}</small><small>Notif ≤ ${mn(p)} · Beli ${rp(p.cost)}</small></div>
   <button class="g" onclick="restock('${p.id}')">Restock</button></div>`).join('')||'<p class="mu">Belum ada barang. Tambahkan barang pertama.</p>'}
   <button class="p" onclick="addP()">+ Tambah barang</button>`;
