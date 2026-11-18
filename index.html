@@ -65,6 +65,7 @@ label.mu{display:block;margin-top:10px;font-size:13px}label.card input{margin-to
 <header><div class="li" style="gap:4px;justify-content:flex-start"><button class="x" id="bk" onclick="back()" aria-label="Kembali" hidden>←</button><b id="ttl" style="font-size:18px"></b></div><input type="month" id="ym" onchange="S.ym=this.value;save();render()"></header>
 <div class="li" style="margin:-2px 2px 8px"><small id="st" class="mu"></small><button class="x" style="font-size:14px" onclick="settings()">⚙ Sinkronisasi</button></div>
 <div id="v"></div>
+<div style="text-align:center;margin:14px 0"><button class="x" id="vb" style="font-size:12px" onclick="showVer()"></button></div>
 </main>
 <nav id="nav"></nav>
 <div id="m" hidden></div>
@@ -108,7 +109,7 @@ async function push(){
     const r=await api({state:{profiles:S.profiles,updated:up}});
     if(r.ok){S.pushed=up;persist();stat('Tersimpan di Google Sheets ✓')}
     else if(r.error=='stale'){pushing=false;await pull()}
-    else stat(r.error=='token'?'Kode rahasia salah':'Gagal menyimpan')
+    else stat(r.error=='token'?'Kode tidak cocok dengan TOKEN di Code.gs':'Gagal menyimpan')
   }catch(e){stat('Offline, akan dicoba lagi')}
   pushing=false;
 }
@@ -117,7 +118,7 @@ async function pull(){
   stat('Memuat…');
   try{
     const r=await api();
-    if(!r.ok){stat(r.error=='token'?'Kode rahasia salah':'Gagal memuat');return}
+    if(!r.ok){stat(r.error=='token'?'Kode tidak cocok dengan TOKEN di Code.gs':'Gagal memuat');return}
     const c=r.state;
     if(c&&c.updated>(S.updated||0)){S.profiles=c.profiles||legacy(c);fix();S.updated=c.updated;S.pushed=c.updated;lastData=dataStr();persist();render();stat('Sinkron dengan Google Sheets ✓')}
     else if(!c||(S.updated||0)>c.updated){if(!S.updated)S.updated=Date.now();await push()}
@@ -134,6 +135,8 @@ function settings(){
     stat(CFG.u?'Memuat…':'Belum terhubung ke Google Sheets');
     if(CFG.u)setTimeout(pull,0);
   });
+  const t=$('#m [name=t]');
+  if(t){const c=document.createElement('label');c.className='mu';c.innerHTML=`<input type="checkbox" style="width:auto;margin-right:6px" onchange="this.closest('form').t.type=this.checked?'text':'password'">Tampilkan ketikan`;t.parentNode.after(c)}
 }
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState=='visible')pull();
@@ -151,7 +154,7 @@ const closeM=()=>{$('#m').hidden=true};
 
 function form(title,fields,ok){
   const m=$('#m');
-  m.innerHTML=`<div class="sh"><h3>${title}</h3><form>${fields.map(f=>`<label>${f.l}${f.o?`<select name="${f.k}">${f.o.map(o=>`<option value="${esc(o[0])}" ${o[0]==f.v?'selected':''}>${esc(o[1])}</option>`).join('')}</select>`:`<input name="${f.k}" type="${f.t||'text'}" value="${esc(f.v==null?'':f.v)}" ${f.t=='number'?'min="0" step="any" inputmode="decimal"':f.t=='datetime-local'?'step="1"':''} ${f.dl?'list="dl_'+f.k+'"':''} ${f.t=='password'?'autocomplete="new-password"':''} ${f.r===0?'':'required'}>${f.dl?`<datalist id="dl_${f.k}">${f.dl.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>`:''}`}</label>`).join('')}<div class="row"><button type="button" class="g" onclick="closeM()">Batal</button><button class="p">Simpan</button></div></form></div>`;
+  m.innerHTML=`<div class="sh"><h3>${title}</h3><form>${fields.map(f=>`<label>${f.l}${f.o?`<select name="${f.k}">${f.o.map(o=>`<option value="${esc(o[0])}" ${o[0]==f.v?'selected':''}>${esc(o[1])}</option>`).join('')}</select>`:`<input name="${f.k}" type="${f.t||'text'}" value="${esc(f.v==null?'':f.v)}" ${f.t=='number'?'min="0" step="any" inputmode="decimal"':f.t=='datetime-local'?'step="1"':''} ${f.dl?'list="dl_'+f.k+'"':''} ${f.t=='password'?'autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"':''} ${f.r===0?'':'required'}>${f.dl?`<datalist id="dl_${f.k}">${f.dl.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>`:''}`}</label>`).join('')}<div class="row"><button type="button" class="g" onclick="closeM()">Batal</button><button class="p">Simpan</button></div></form></div>`;
   m.hidden=false;
   m.querySelector('form').onsubmit=e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));if(ok(d)===false)return;closeM();save();render()};
 }
@@ -161,6 +164,30 @@ function addTx(t){
     {k:'a',l:'Jumlah (Rp)',t:'number'},{k:'w',l:t=='in'?'Masuk ke':'Dibayar dari',o:wopts()},
     {k:'c',l:'Kategori (ketik atau pilih)',v:'',dl:cats(t)},{k:'n',l:'Catatan',r:0},{k:'d',l:'Waktu',t:'datetime-local',v:now()}
   ],d=>{D().tx.push({id:uid(),d:d.d,t,a:+d.a,w:d.w,c:d.c,n:d.n})});
+}
+const VER='3.3';
+const CHANGES=[
+['3.3','Stok desimal dirapikan (tidak ada lagi 3e-16 atau 0,30000000000000001). Tombol Riwayat di tiap barang menampilkan siapa saja yang bertransaksi. Nomor versi tampil di aplikasi.'],
+['3.2','Kode rahasia bisa dilihat saat diketik (Tampilkan ketikan); huruf pertama tidak lagi otomatis kapital.'],
+['3.1','Harga jual bisa dipilih per satuan utama atau satuan kedua; harga beli selalu per satuan utama.'],
+['3.0','Catatan penjualan multi-item di Pihak bisnis, satuan ukur produk, jenis pihak Terima/Bayar, notifikasi stok menipis, cari transaksi per kategori, kode rahasia disensor.'],
+['2.0','Banyak profil, animasi, edit transaksi/stok/staf, Pihak (utang-piutang), Analisis, Tabungan.'],
+['1.2','Sinkronisasi otomatis ke Google Sheets.'],
+['1.1','Transfer antar dompet dan ekspor Excel.'],
+['1.0','Versi awal: mode pribadi dan bisnis, dompet, stok, gaji staf.']];
+function showVer(){const m=$('#m');m.innerHTML=`<div class="sh"><h3>Versi ${VER}</h3>${CHANGES.map(c=>`<div class="card"><b>v${c[0]}</b><br><small>${esc(c[1])}</small></div>`).join('')}<div class="row"><button class="g" onclick="closeM()">Tutup</button></div></div>`;m.hidden=false}
+function prodHist(pid){
+  const d=D(),p=d.products.find(x=>x.id==pid);if(!p)return;
+  const u=esc(p.unit||'pcs'),pn=id=>(d.parties.find(x=>x.id==id)||{name:'Pembeli umum'}).name,sn=id=>(d.staff.find(x=>x.id==id)||{name:''}).name,rows=[],by={};
+  const add=(k,q)=>{const b=by[k]||(by[k]={q:0,n:0});b.q+=q;b.n++};
+  d.sales.forEach(v=>v.items.filter(i=>i.p==pid).forEach(i=>{const nm=pn(v.party);add(nm,i.qb);rows.push({d:v.d,h:`Faktur #${esc(v.no)} · ${esc(nm)}`,s:`-${fmtN(i.q)} ${esc(i.u)}${v.s?' · staf '+esc(sn(v.s)):''}`,oc:`openInv('${v.id}')`})}));
+  d.tx.forEach(x=>{
+    if(x.sale&&x.sale.p==pid){add('Penjualan lama',x.sale.q);rows.push({d:x.d,h:'Penjualan (lama)',s:`-${fmtN(x.sale.q)} ${u}${x.s?' · staf '+esc(sn(x.s)):''}`,oc:`editTx('${x.id}')`})}
+    if(x.restock&&x.restock.p==pid)rows.push({d:x.d,h:'Restock',s:`+${fmtN(x.restock.q)} ${u} · ${rp(x.a)}`,oc:`editTx('${x.id}')`});
+  });
+  const m=$('#m');
+  m.innerHTML=`<div class="sh"><h3>${esc(p.name)}</h3><small>Stok sekarang ${fmtN(p.stock)} ${u}</small><h3>Pembeli</h3>${Object.entries(by).sort((a,b)=>b[1].q-a[1].q).map(([k,v])=>`<div class="card li"><b>${esc(k)}</b><small>${v.n}x · ${fmtN(v.q)} ${u}</small></div>`).join('')||'<p class="mu">Belum ada penjualan.</p>'}<h3>Riwayat transaksi</h3>${rows.sort((a,b)=>b.d.localeCompare(a.d)).map(r=>`<div class="card li tap" onclick="closeM();${r.oc}"><div><b>${r.h}</b><br><small>${r.d.replace('T',' ')} · ${r.s}</small></div></div>`).join('')||'<p class="mu">Belum ada transaksi.</p>'}<div class="row"><button class="g" onclick="closeM()">Tutup</button></div></div>`;
+  m.hidden=false;
 }
 const sale=()=>newInv('');
 function pickProd(cb){
@@ -173,8 +200,8 @@ function restock(pid){
   const p=d0.products.find(x=>x.id==pid),us=[p.unit||'pcs',...(p.unit2?[p.unit2]:[])];
   form('Restock '+esc(p.name),[{k:'q',l:'Jumlah masuk',t:'number'},{k:'u',l:'Satuan',o:us.map(u=>[u,u])},{k:'h',l:'Harga beli per satuan utama (Rp)',t:'number'},{k:'w',l:'Dibayar dari',o:wopts()},{k:'d',l:'Waktu',t:'datetime-local',v:now()}],d=>{
     const q=+d.q,f=p.unit2&&d.u==p.unit2?(p.conv||1):1,h=+d.h;
-    p.stock+=q/f;p.cost=h;
-    d0.tx.push({id:uid(),d:d.d,t:'out',a:Math.round(q/f*h),w:d.w,c:'Restock',n:`${p.name} x${fmtN(q)} ${d.u}`,restock:{p:p.id,q:q/f}});
+    p.stock=rnd(p.stock+q/f);p.cost=h;
+    d0.tx.push({id:uid(),d:d.d,t:'out',a:Math.round(q/f*h),w:d.w,c:'Restock',n:`${p.name} x${fmtN(q)} ${d.u}`,restock:{p:p.id,q:rnd(q/f)}});
   });
 }
 const UNITS=['Pcs','Bungkus','Pak','Kotak','Kemasan','Botol','Kaleng','Kg','Gram','Liter','Lusin','Dus','Karung'];
@@ -183,7 +210,7 @@ function pForm(p,ok){
     if(d.u2&&!(+d.cv>0)){alert('Isi nilai konversi untuk satuan kedua.');return false}
     if(d.pu=='2'&&!d.u2){alert('Isi satuan kedua dulu, atau pilih harga jual per satuan utama.');return false}
     const cv=+d.cv||1,pr=+d.pr,c2=d.pu=='2'&&d.u2;
-    ok({name:d.n,cat:d.ct,unit:d.u,unit2:d.u2,conv:cv,price:c2?pr*cv:pr,price2:d.u2?(c2?pr:Math.round(pr/cv*100)/100):null,psel:c2?2:1,cost:+d.c,stock:+d.s,min:+d.mn});
+    ok({name:d.n,cat:d.ct,unit:d.u,unit2:d.u2,conv:cv,price:c2?pr*cv:pr,price2:d.u2?(c2?pr:Math.round(pr/cv*100)/100):null,psel:c2?2:1,cost:+d.c,stock:rnd(+d.s),min:+d.mn});
   });
 }
 function addP(){pForm(null,o=>D().products.push(Object.assign({id:uid()},o)))}
@@ -219,13 +246,14 @@ async function exportXls(){
   catch(e){if(!e||e.code!='declined')alert('Ekspor gagal: '+((e&&(e.message||e.code))||'tidak diketahui'))}
 }
 let DR=null;
-const fmtN=n=>String(Math.round(n*100)/100).replace('.',',');
+function rnd(n){return Math.round(n*1e6)/1e6}
+const fmtN=n=>String(Math.round(n*1e4)/1e4).replace('.',',');
 const mn=p=>p.min==null?5:p.min;
 const uprice=(p,u)=>p.unit2&&u==p.unit2?(p.price2!=null?p.price2:Math.round(p.price/(p.conv||1)*100)/100):p.price;
 const sc=(d,id,ym)=>{const a=d.tx.filter(x=>x.s==id&&x.d.startsWith(ym)),b=(d.sales||[]).filter(v=>v.s==id&&v.d.startsWith(ym));return{sales:a.reduce((s,x)=>s+x.a,0)+b.reduce((s,v)=>s+v.total,0),comm:a.reduce((s,x)=>s+(x.comm||0),0)+b.reduce((s,v)=>s+(v.comm||0),0)}};
 const invT=x=>{const sub=x.items.reduce((a,i)=>a+i.tot,0),dc=Math.min(x.disc||0,sub),tx=(sub-dc)*(x.tax||0)/100;return{sub,tx,total:Math.max(0,sub-dc+tx+(x.fee||0))}};
 const pdv=x=>x.party?(x.paidOn?Math.min(+x.paid||0,invT(x).total):0):invT(x).total;
-function fix(){S.profiles.forEach(p=>{p.sales=p.sales||[];p.parties=p.parties||[];p.savings=p.savings||[];p.parties.forEach(x=>{x.ent.forEach(e=>{if(e.k=='p')e.k='y';if(e.k=='s')e.k='b'});if(p.type!='biz'){if(x.kind=='pelanggan')x.kind='terima';if(x.kind=='pemasok')x.kind='bayar'}})})}
+function fix(){S.profiles.forEach(p=>{p.sales=p.sales||[];(p.products||[]).forEach(x=>{x.stock=rnd(x.stock)});p.parties=p.parties||[];p.savings=p.savings||[];p.parties.forEach(x=>{x.ent.forEach(e=>{if(e.k=='p')e.k='y';if(e.k=='s')e.k='b'});if(p.type!='biz'){if(x.kind=='pelanggan')x.kind='terima';if(x.kind=='pemasok')x.kind='bayar'}})})}
 function toast(t){const o=$('#toast');if(o)o.remove();const e=document.createElement('div');e.id='toast';e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),6000)}
 const invL=l=>l.length?'<h3>Catatan penjualan</h3>'+[...l].sort((a,b)=>b.d.localeCompare(a.d)).map(v=>{const r=v.total-v.paid;return `<div class="card li tap" onclick="openInv('${v.id}')"><div><b>Faktur #${esc(v.no)}</b><br><small>${v.d.replace('T',' ')} · ${v.items.length} item</small></div><div style="text-align:right"><b>${rp(v.total)}</b><br><small class="${r>0?'out':'in'}">${r>0?'Terutang '+rp(r):'Lunas'}</small></div></div>`}).join(''):'';
 function newInv(party){const d=D();DR={no:String(d.sales.reduce((m,v)=>Math.max(m,+v.no||0),0)+1),d:now(),party:party||'',items:[],disc:0,tax:0,fee:0,paidOn:false,paid:'',w:d.wallets[0].id,s:'',note:'',u:{}};S.sub={k:'inv'};save();render()}
@@ -268,7 +296,7 @@ function itemDlg(pid,idx){
   const m=$('#m');
   m.innerHTML=`<div class="sh"><h3>Tambah Item Tagihan</h3><form id="itf"><label class="mu">Nama item<input value="${esc(p.name)}" disabled></label><label class="mu">Qty<div class="li" style="gap:8px"><input name="q" type="number" step="any" min="0" required value="${o?o.q:1}" oninput="itc('q')"><select name="u" style="width:42%" onchange="itc('u')">${us.map(z=>`<option ${z==u0?'selected':''}>${esc(z)}</option>`).join('')}</select></div></label><label class="mu">Harga (Rp)<input name="h" type="number" step="any" min="0" required value="${o?o.price:uprice(p,u0)}" oninput="itc('h')"></label><div class="row2"><label class="mu">Diskon %<input name="dp" type="number" step="any" min="0" value="${o&&o.dp?o.dp:''}" oninput="itc('dp')"></label><label class="mu">Jumlah diskon<input name="da" type="number" step="any" min="0" value="${o&&o.da?o.da:''}" oninput="itc('da')"></label></div><div class="card li"><span>Jumlah Total</span><b id="itt"></b></div><div class="row"><button type="button" class="g" onclick="closeM()">Batal</button><button class="p">Simpan Item</button></div></form></div>`;
   m.hidden=false;const f=$('#itf');itc('');
-  f.onsubmit=e=>{e.preventDefault();const q=+f.q.value,u=f.u.value,h=+f.h.value,g=q*h,da=Math.min(+f.da.value||0,g),it={p:p.id,name:p.name,q,u,qb:q/(p.unit2&&u==p.unit2?(p.conv||1):1),price:h,dp:+f.dp.value||0,da,tot:g-da};if(idx>=0)DR.items[idx]=it;else DR.items.push(it);DR.pick=0;closeM();render()};
+  f.onsubmit=e=>{e.preventDefault();const q=+f.q.value,u=f.u.value,h=+f.h.value,g=q*h,da=Math.min(+f.da.value||0,g),it={p:p.id,name:p.name,q,u,qb:rnd(q/(p.unit2&&u==p.unit2?(p.conv||1):1)),price:h,dp:+f.dp.value||0,da,tot:Math.round((g-da)*100)/100};if(idx>=0)DR.items[idx]=it;else DR.items.push(it);DR.pick=0;closeM();render()};
 }
 function itc(s){
   const f=$('#itf'),p=IT.p;
@@ -278,7 +306,7 @@ function itc(s){
   else if(f.dp.value!==''||s=='dp')f.da.value=Math.round(g*(+f.dp.value||0))/100||'';
   $('#itt').textContent=rp(g-Math.min(+f.da.value||0,g));
 }
-function revInv(d,v){v.items.forEach(i=>{const p=d.products.find(p=>p.id==i.p);if(p)p.stock+=i.qb});d.tx=d.tx.filter(t=>t.inv!=v.id);d.parties.forEach(p=>p.ent=p.ent.filter(e=>e.inv!=v.id))}
+function revInv(d,v){v.items.forEach(i=>{const p=d.products.find(p=>p.id==i.p);if(p)p.stock=rnd(p.stock+i.qb)});d.tx=d.tx.filter(t=>t.inv!=v.id);d.parties.forEach(p=>p.ent=p.ent.filter(e=>e.inv!=v.id))}
 function saveInv(){
   const d=D(),x=DR;
   if(!x.items.length)return alert('Tambahkan minimal satu item.');
@@ -288,7 +316,7 @@ function saveInv(){
   if(old)revInv(d,old);
   const v=Object.assign(old||{id:uid()},{no:x.no,d:x.d,party:x.party,items:x.items,disc:x.disc,tax:x.tax,fee:x.fee,total:T.total,paid:pv,w:x.w,s:x.s,note:x.note}),s=d.staff.find(s=>s.id==x.s);
   v.comm=s?T.total*s.pct/100:0;if(!old)d.sales.push(v);
-  x.items.forEach(i=>{const p=d.products.find(p=>p.id==i.p);if(p)p.stock-=i.qb});
+  x.items.forEach(i=>{const p=d.products.find(p=>p.id==i.p);if(p)p.stock=rnd(p.stock-i.qb)});
   const pt=d.parties.find(p=>p.id==x.party),lb='Faktur #'+x.no;
   if(pv>0)d.tx.push({id:uid(),d:x.d,t:'in',a:pv,w:x.w,c:'Penjualan',n:lb+(pt?' · '+pt.name:''),inv:v.id});
   if(pt&&T.total-pv>0)pt.ent.push({id:uid(),k:'y',a:T.total-pv,d:x.d,n:lb,inv:v.id});
@@ -335,17 +363,17 @@ function editTx(id){
     const p=d0.products.find(p=>p.id==x.sale.p),q0=x.sale.q,u=x.a/q0;
     return form('Ubah penjualan',[{k:'q',l:'Jumlah terjual',t:'number',v:q0},{k:'s',l:'Staf penjual',o:[['','Tanpa staf'],...d0.staff.map(s=>[s.id,s.name])],v:x.s||''},{k:'w',l:'Uang masuk ke',o:wopts(),v:x.w},W],d=>{
       const q=+d.q,s=d0.staff.find(s=>s.id==d.s);
-      if(p&&p.stock+q0-q<0){alert('Stok tidak cukup');return false}
-      if(p)p.stock+=q0-q;
+      if(p&&rnd(p.stock+q0-q)<0){alert('Stok tidak cukup');return false}
+      if(p)p.stock=rnd(p.stock+q0-q);
       Object.assign(x,{a:u*q,n:(p?p.name:'Barang')+' x'+q,w:d.w,s:s?s.id:'',comm:s?u*q*s.pct/100:0,d:d.d});x.sale.q=q;
     });
   }
   if(x.restock){
     const p=d0.products.find(p=>p.id==x.restock.p),q0=x.restock.q;
-    return form('Ubah restock',[{k:'q',l:'Jumlah masuk',t:'number',v:q0},{k:'h',l:'Harga beli per unit (Rp)',t:'number',v:x.a/q0},{k:'w',l:'Dibayar dari',o:wopts(),v:x.w},W],d=>{
+    return form('Ubah restock',[{k:'q',l:'Jumlah masuk',t:'number',v:q0},{k:'h',l:'Harga beli per unit (Rp)',t:'number',v:rnd(x.a/q0)},{k:'w',l:'Dibayar dari',o:wopts(),v:x.w},W],d=>{
       const q=+d.q;
-      if(p&&p.stock-q0+q<0){alert('Stok akan menjadi negatif');return false}
-      if(p){p.stock+=q-q0;p.cost=+d.h}
+      if(p&&rnd(p.stock-q0+q)<0){alert('Stok akan menjadi negatif');return false}
+      if(p){p.stock=rnd(p.stock+q-q0);p.cost=+d.h}
       Object.assign(x,{a:q*(+d.h),n:(p?p.name:'Barang')+' x'+q,w:d.w,d:d.d});x.restock.q=q;
     });
   }
@@ -461,7 +489,7 @@ function stok(d){
   return `<h3>Stok barang</h3>${d.products.map(p=>`<div class="card"><div class="li"><b>${esc(p.name)}</b><span><button class="x" onclick="editP('${p.id}')">✎</button><button class="x" onclick="delP('${p.id}')" aria-label="Hapus">×</button></span></div>
   <div class="li"><span class="${p.stock<=mn(p)?'out':''}">Stok: <b>${fmtN(p.stock)} ${esc(p.unit||'pcs')}</b></span><span>Jual ${rp(p.price)}/${esc(p.unit||'pcs')}${p.unit2?' · '+rp(uprice(p,p.unit2))+'/'+esc(p.unit2):''}</span></div>
   <div class="li"><small>Nilai stok ${rp(p.stock*p.cost)}</small><small>Notif ≤ ${mn(p)} · Beli ${rp(p.cost)}</small></div>
-  <button class="g" onclick="restock('${p.id}')">Restock</button></div>`).join('')||'<p class="mu">Belum ada barang. Tambahkan barang pertama.</p>'}
+  <button class="g" onclick="restock('${p.id}')">Restock</button> <button class="g" onclick="prodHist('${p.id}')">Riwayat</button></div>`).join('')||'<p class="mu">Belum ada barang. Tambahkan barang pertama.</p>'}
   <button class="p" onclick="addP()">+ Tambah barang</button>`;
 }
 function staf(d,b,ym){
@@ -475,6 +503,7 @@ function staf(d,b,ym){
   <button class="g" onclick="addS()">+ Tambah staf</button>`;
 }
 function render(){
+  $('#vb').textContent='Versi '+VER+' · riwayat pembaruan';
   const d=S.cur&&D();
   if(S.cur&&!d)S.cur=null;
   if(S.sub&&S.sub.k=='inv'&&!DR)S.sub=null;
