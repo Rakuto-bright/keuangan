@@ -174,8 +174,9 @@ function addTx(t){
     {k:'c',l:'Kategori (ketik atau pilih)',v:'',dl:cats(t)},{k:'n',l:'Catatan',r:0},{k:'d',l:'Waktu',t:'datetime-local',v:now()}
   ],d=>{D().tx.push({id:uid(),d:d.d,t,a:+d.a,w:d.w,c:d.c,n:d.n})});
 }
-const VER='4.0';
+const VER='4.1';
 const CHANGES=[
+['4.1','Tombol Ikhlaskan di Pihak (hapus utang tanpa menambah saldo dompet). Pihak bisa dicari dan ditambah baru saat mencatat penjualan, diurutkan dari yang paling sering beli. Tulisan "faktur belum lunas" di Pihak dihapus.'],
 ['4.0','Tab Pemesanan (dengan kotak sudah bayar dan pesan item saja, bisa dijadikan faktur, pengingat di bawah dompet). Restock multi-item dengan diskon, pajak, dan biaya tambahan. Kalkulator di keyboard saat mencatat. Peringatan stok menipis per barang dan bisa ditutup. Faktur dan riwayat di Pihak disatukan. Barang stok kosong di bawah.'],
 ['3.3','Stok desimal dirapikan (tidak ada lagi 3e-16 atau 0,30000000000000001). Tombol Riwayat di tiap barang menampilkan siapa saja yang bertransaksi. Nomor versi tampil di aplikasi.'],
 ['3.2','Kode rahasia bisa dilihat saat diketik (Tampilkan ketikan); huruf pertama tidak lagi otomatis kapital.'],
@@ -260,7 +261,7 @@ const unp=(d,p)=>[...d.sales,...d.buys].filter(v=>v.party==p.id&&v.total>v.paid)
 function hist(d,p){
   const r=[];
   [...d.sales,...d.buys].filter(v=>v.party==p.id).forEach(v=>r.push({d:v.d,h:invRow(v)}));
-  p.ent.filter(e=>!e.inv).forEach(e=>r.push({d:e.d,h:`<div class="card li tap" onclick="entForm('${p.id}','${e.id}')"><div><b>${KL[e.k]}</b>${e.n?' · '+esc(e.n):''}<br><small>${e.d.replace('T',' ')}</small></div><div style="text-align:right"><b class="${'py'.includes(e.k)?'in':'out'}">${'py'.includes(e.k)?'+':'-'}${rp(e.a)}</b><br><button class="x" onclick="event.stopPropagation();delEnt('${p.id}','${e.id}')">×</button></div></div>`}));
+  p.ent.filter(e=>!e.inv).forEach(e=>r.push({d:e.d,h:`<div class="card li tap" onclick="entForm('${p.id}','${e.id}')"><div><b>${e.ikhlas?'Diikhlaskan':KL[e.k]}</b>${e.n?' · '+esc(e.n):''}<br><small>${e.d.replace('T',' ')}</small></div><div style="text-align:right"><b class="${e.ikhlas?'mu':'py'.includes(e.k)?'in':'out'}">${'py'.includes(e.k)?'+':'-'}${rp(e.a)}</b><br><button class="x" onclick="event.stopPropagation();delEnt('${p.id}','${e.id}')">×</button></div></div>`}));
   return '<h3>Faktur & riwayat</h3>'+(r.sort((a,b)=>b.d.localeCompare(a.d)).map(x=>x.h).join('')||'<p class="mu">Belum ada catatan.</p>');
 }
 const buyRows=(d,pid,u)=>d.buys.flatMap(v=>v.items.filter(i=>i.p==pid).map(i=>({d:v.d,h:`Restock #${esc(v.no)}${v.party?' · '+esc((d.parties.find(p=>p.id==v.party)||{name:''}).name):''}`,s:`+${fmtN(i.q)} ${esc(i.u)} · ${rp(i.tot)}`,oc:`openInv('${v.id}')`})));
@@ -305,9 +306,25 @@ function saveOrd(){
 function upd(){const T=invT(DR),a=$('#tot'),b=$('#sdo');if(a)a.textContent=rp(T.total);if(b)b.textContent=rp(T.total-pdv(DR))}
 function adj(k){const L={disc:'Diskon (Rp)',tax:'Pajak (%)',fee:'Biaya tambahan (Rp)'};form('Ubah '+L[k],[{k:'v',l:L[k],t:'calc',v:DR[k]||'',r:0}],d=>{DR[k]=ev(d.v)||0})}
 function editIt(i){itemDlg(DR.items[i].p,i)}
+const bc=(d,p)=>d.sales.filter(v=>v.party==p.id).length;
+function ppl(){
+  const d=D(),q=(window.PQ||'').toLowerCase();
+  const l=d.parties.filter(p=>p.name.toLowerCase().includes(q)).sort((a,b)=>bc(d,b)-bc(d,a)||pd(b).localeCompare(pd(a)));
+  return l.map(p=>`<div class="card li tap" onclick="DR.party='${p.id}';closeM();render()"><b>${esc(p.name)}</b><small>${bc(d,p)?bc(d,p)+'x beli':''}</small></div>`).join('')||`<p class="mu">Tidak ada pihak${q?' bernama "'+esc(window.PQ)+'"':''}. Ketuk + Baru untuk menambahkan.</p>`;
+}
 function pickParty(){
-  const d=D(),m=$('#m');
-  m.innerHTML=`<div class="sh"><h3>Pilih pihak</h3>${DR.kind=='order'?'':`<div class="card li tap" onclick="DR.party='';closeM();render()"><b>Tanpa pihak (langsung lunas)</b></div>`}${d.parties.map(p=>`<div class="card li tap" onclick="DR.party='${p.id}';closeM();render()"><b>${esc(p.name)}</b></div>`).join('')}<div class="row"><button class="g" onclick="closeM()">Batal</button><button class="p" onclick="addPt(1)">+ Pihak baru</button></div></div>`;m.hidden=false;
+  window.PQ='';
+  const m=$('#m'),od=DR.kind=='order';
+  m.innerHTML=`<div class="sh"><h3>Pilih pihak</h3><div class="li" style="gap:8px"><input placeholder="Cari pihak…" oninput="window.PQ=this.value;$('#ppl').innerHTML=ppl()"><button class="p" style="white-space:nowrap" onclick="addPt(1,window.PQ)">+ Baru</button></div>${od?'':`<div class="card li tap" onclick="DR.party='';closeM();render()"><b>Tanpa pihak (langsung lunas)</b></div>`}<div id="ppl">${ppl()}</div><div class="row"><button class="g" onclick="closeM()">Batal</button></div></div>`;
+  m.hidden=false;
+}
+function ikhlas(pid){
+  const d=D(),p=d.parties.find(x=>x.id==pid),B=pb(p);if(B<=0)return;
+  form('Ikhlaskan utang '+esc(p.name),[{k:'a',l:'Jumlah diikhlaskan (Rp), saldo dompet tidak berubah',t:'calc',v:B},{k:'n',l:'Catatan',r:0,v:''},{k:'d',l:'Waktu',t:'datetime-local',v:now()}],f=>{
+    const a=Math.min(ev(f.a)||0,B);
+    if(!(a>0)){alert('Isi jumlah yang diikhlaskan.');return false}
+    p.ent.push({id:uid(),k:'b',a,d:f.d,n:f.n,ikhlas:1});
+  });
 }
 function invv(d){
   const x=DR;if(x.pick)return pickv(d);
@@ -330,7 +347,7 @@ function invv(d){
 }
 function pil(d){
   const q=(DR.q||'').toLowerCase(),buy=DR.kind=='buy';
-  let l=d.products.filter(p=>(!DR.c||p.cat==DR.c)&&p.name.toLowerCase().includes(q));
+  let l=d.products.filter(p=>(!DR.c||p.cat==DR.c)&&(p.name+' '+(p.cat||'')).toLowerCase().includes(q));
   if(!buy)l=[...l].sort((a,b)=>(a.stock<=0)-(b.stock<=0));
   return l.map(p=>{const us=[p.unit||'pcs',...(p.unit2?[p.unit2]:[])],u=DR.u[p.id]||us[0];return `<div class="card tap" style="${!buy&&p.stock<=0?'opacity:.55':''}" onclick="itemDlg('${p.id}',-1)"><b>${esc(p.name)}</b><br><small>${esc(p.cat||'Umum')}</small><div class="li" style="margin-top:6px"><span>${rp(ip(p,u))} <select style="width:auto;display:inline-block" onclick="event.stopPropagation()" onchange="DR.u['${p.id}']=this.value;$('#pi').innerHTML=pil(D())">${us.map(z=>`<option ${z==u?'selected':''}>${esc(z)}</option>`).join('')}</select></span><small class="${p.stock<=mn(p)?'out':''}">Stok: ${fmtN(p.stock)} ${esc(p.unit||'pcs')}</small></div></div>`}).join('')||'<p class="mu">Belum ada barang. Ketuk Tambah Item untuk membuat.</p>';
 }
@@ -452,7 +469,7 @@ function editS(id){const s=D().staff.find(x=>x.id==id);form('Ubah staf',[{k:'n',
 
 function pl(d){
   const q=(S.pq||'').toLowerCase(),f=S.pf||'all';
-  return d.parties.filter(p=>p.name.toLowerCase().includes(q)&&(f=='all'||(f=='open'?pb(p)!=0:p.kind==f))).sort((a,b)=>pd(b).localeCompare(pd(a))).map(p=>{const v=pb(p);return `<div class="card li tap" onclick="go('pt','${p.id}')"><div class="av">${esc(p.name[0].toUpperCase())}</div><div style="flex:1"><b>${esc(p.name)}</b><br><small>${pd(p)?pd(p).slice(0,10):'Belum ada catatan'}${unp(d,p)?' · '+unp(d,p)+' faktur belum lunas':''}</small></div><div style="text-align:right"><b class="${v>0?'in':v<0?'out':''}">${rp(Math.abs(v))}</b><br><small>${v>0?'Terima':v<0?'Bayar':'Lunas'}</small></div></div>`}).join('')||'<p class="mu">Belum ada pihak.</p>';
+  return d.parties.filter(p=>p.name.toLowerCase().includes(q)&&(f=='all'||(f=='open'?pb(p)!=0:p.kind==f))).sort((a,b)=>bc(d,b)-bc(d,a)||pd(b).localeCompare(pd(a))).map(p=>{const v=pb(p);return `<div class="card li tap" onclick="go('pt','${p.id}')"><div class="av">${esc(p.name[0].toUpperCase())}</div><div style="flex:1"><b>${esc(p.name)}</b><br><small>${pd(p)?pd(p).slice(0,10):'Belum ada catatan'}${bc(d,p)?' · '+bc(d,p)+'x beli':''}</small></div><div style="text-align:right"><b class="${v>0?'in':v<0?'out':''}">${rp(Math.abs(v))}</b><br><small>${v>0?'Terima':v<0?'Bayar':'Lunas'}</small></div></div>`}).join('')||'<p class="mu">Belum ada pihak.</p>';
 }
 function pty(d){
   const f=S.pf||'all';
@@ -461,14 +478,14 @@ function pty(d){
 function ptd(d){
   const p=d.parties.find(x=>x.id==S.sub.id);if(!p){S.sub=null;return ''}
   const v=pb(p);
-  return `<div class="card"><div class="li"><b style="font-size:18px">${esc(p.name)}</b><span><button class="x" onclick="editPt('${p.id}')">✎</button><button class="x" onclick="delPt('${p.id}')">×</button></span></div><small>${(pk().find(k=>k[0]==p.kind)||[0,p.kind])[1]}</small><h1 class="${v>0?'in':v<0?'out':''}" style="margin:6px 0;font-size:30px">${rp(Math.abs(v))}</h1><small>${v>0?'Dia berutang ke saya (terima)':v<0?'Saya berutang ke dia (bayar)':'Lunas'}${unp(d,p)?' · '+unp(d,p)+' faktur belum lunas':''}</small></div><button class="p" onclick="entForm('${p.id}')">+ Catat</button>${hist(d,p)}`;
+  return `<div class="card"><div class="li"><b style="font-size:18px">${esc(p.name)}</b><span><button class="x" onclick="editPt('${p.id}')">✎</button><button class="x" onclick="delPt('${p.id}')">×</button></span></div><small>${(pk().find(k=>k[0]==p.kind)||[0,p.kind])[1]}</small><h1 class="${v>0?'in':v<0?'out':''}" style="margin:6px 0;font-size:30px">${rp(Math.abs(v))}</h1><small>${v>0?'Dia berutang ke saya (terima)':v<0?'Saya berutang ke dia (bayar)':'Lunas'}</small></div><button class="p" onclick="entForm('${p.id}')">+ Catat</button>${v>0?` <button class="g" onclick="ikhlas('${p.id}')">Ikhlaskan</button>`:''}${hist(d,p)}`;
 }
-function addPt(sel){form('Pihak baru',[{k:'n',l:'Nama'},{k:'k',l:'Jenis',o:pk()}],d=>{const p={id:uid(),name:d.n,kind:d.k,ent:[]};D().parties.push(p);if(sel&&DR)DR.party=p.id})}
+function addPt(sel,nm){form('Pihak baru',[{k:'n',l:'Nama',v:nm||''},{k:'k',l:'Jenis',o:pk(),v:D().type=='biz'?(sel&&DR&&DR.kind=='buy'?'pemasok':'pelanggan'):undefined}],d=>{const p={id:uid(),name:d.n,kind:d.k,ent:[]};D().parties.push(p);if(sel&&DR)DR.party=p.id})}
 function editPt(id){const p=D().parties.find(x=>x.id==id);form('Ubah pihak',[{k:'n',l:'Nama',v:p.name},{k:'k',l:'Jenis',o:pk(),v:p.kind}],d=>{p.name=d.n;p.kind=d.k})}
 function delPt(id){if(!confirm('Hapus pihak ini beserta riwayat dan transaksi dompet yang terkait?'))return;const d=D();d.tx=d.tx.filter(t=>t.pt!=id);d.parties=d.parties.filter(p=>p.id!=id);S.sub=null;save();render()}
 function delEnt(pid,eid){if(!confirm('Hapus catatan ini?'))return;const d=D(),p=d.parties.find(x=>x.id==pid);p.ent=p.ent.filter(e=>e.id!=eid);d.tx=d.tx.filter(t=>t.tf!=eid);save();render()}
 function entForm(pid,eid){
-  const d0=D(),p=d0.parties.find(x=>x.id==pid),e=eid?p.ent.find(x=>x.id==eid):null;if(e&&e.inv)return openInv(e.inv);const lt=e&&d0.tx.find(t=>t.tf==eid);
+  const d0=D(),p=d0.parties.find(x=>x.id==pid),e=eid?p.ent.find(x=>x.id==eid):null;if(e&&e.inv)return openInv(e.inv);if(e&&e.ikhlas)return alert('Catatan ikhlas tidak bisa diedit. Hapus dengan tombol × lalu buat lagi jika perlu.');const lt=e&&d0.tx.find(t=>t.tf==eid);
   form(e?'Ubah catatan':'Catat utang-piutang',[{k:'k',l:'Jenis',o:KO,v:e?e.k:'p'},{k:'a',l:'Jumlah (Rp)',t:'number',v:e?e.a:''},{k:'w',l:'Catat juga di dompet',o:[['','Tidak dicatat di dompet'],...wopts()],v:lt?lt.w:''},{k:'n',l:'Catatan',r:0,v:e?e.n:''},{k:'d',l:'Waktu',t:'datetime-local',v:e?e.d:now()}],d=>{
     const en=e||{id:uid()};Object.assign(en,{k:d.k,a:+d.a,d:d.d,n:d.n});if(!e)p.ent.push(en);
     d0.tx=d0.tx.filter(t=>t.tf!=en.id);
