@@ -81,7 +81,7 @@ details ol{padding-left:20px;margin:2px 0 10px}details li{margin:6px 0}.tut h4{m
 </head>
 <body>
 <main>
-<header><div class="li" style="gap:4px;justify-content:flex-start"><button class="x" id="bk" onclick="back()" aria-label="Kembali" hidden>←</button><b id="ttl" style="font-size:18px"></b></div><input type="month" id="ym" onchange="S.ym=this.value;save();render()"></header>
+<header style="flex-wrap:wrap"><b id="ttl" style="font-size:18px"></b><span style="display:flex;align-items:center;gap:8px;margin-left:auto"><input type="month" id="ym" onchange="S.ym=this.value;save();render()"><button class="g" id="bk" style="margin:0;padding:8px 12px" onclick="back()" aria-label="Kembali" hidden>← Kembali</button></span></header>
 <div class="li" style="margin:-2px 2px 8px;flex-wrap:wrap"><small id="st" class="mu"></small><span><button class="x" style="font-size:14px" onclick="themeDlg()">🎨 Tema</button><button class="x" style="font-size:14px" onclick="settings()">⚙ Sinkronisasi</button></span></div>
 <div id="v"></div>
 <div style="text-align:center;margin:14px 0"><button class="x" id="vb" style="font-size:12px" onclick="showVer()"></button><br><button class="x" style="font-size:13px" onclick="showTut()">📖 Buku tutorial</button></div>
@@ -124,7 +124,7 @@ async function api(body){
     :await fetch(CFG.u+(CFG.u.includes('?')?'&':'?')+'token='+encodeURIComponent(CFG.t));
   return r.json();
 }
-let lastTbl=0,tblDirty=false;
+let lastTbl=0,tblDirty=false,retryT=null;
 async function push(ft){
   if(!CFG.u)return;
   if(pushing){queuePush();return}
@@ -135,7 +135,7 @@ async function push(ft){
     if(r.ok){S.pushed=up;if(wt)lastTbl=Date.now();tblDirty=!wt;persist();stat('Tersimpan di Google Sheets ✓')}
     else if(r.error=='stale'){pushing=false;await pull()}
     else stat(r.error=='notoken'?'TOKEN belum diisi di Script Properties Apps Script':r.error=='token'?'Kode tidak cocok dengan TOKEN di Script Properties':'Gagal menyimpan')
-  }catch(e){stat('Offline, akan dicoba lagi')}
+  }catch(e){stat('Offline, akan dicoba lagi');clearTimeout(retryT);retryT=setTimeout(()=>push(),15000)}
   pushing=false;
 }
 async function pull(){
@@ -162,7 +162,7 @@ function settings(){
   });
   const t=$('#m [name=t]');
   if(t){const c=document.createElement('label');c.className='mu';c.innerHTML=`<input type="checkbox" style="width:auto;margin-right:6px" onchange="this.closest('form').t.type=this.checked?'text':'password'">Tampilkan ketikan`;t.parentNode.after(c)}
-  const bt=document.createElement('div');bt.innerHTML='<button type="button" class="g" style="width:100%;margin-top:12px" onclick="closeM();push(true)">Perbarui tabel laporan Sheets sekarang</button>';$('#m .sh').appendChild(bt);
+  const bt=document.createElement('div');bt.innerHTML='<button type="button" class="g" style="width:100%;margin-top:12px" onclick="closeM();push(true)">Perbarui tabel laporan Sheets sekarang</button><div class=\"row\" style=\"margin-top:8px\"><button type=\"button\" class=\"g\" onclick=\"backup()\">💾 Cadangkan (.json)</button><button type=\"button\" class=\"g\" onclick=\"closeM();restore()\">♻️ Pulihkan</button></div>';$('#m .sh').appendChild(bt);
 }
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState=='visible')pull();
@@ -182,6 +182,7 @@ function form(title,fields,ok){
   const m=$('#m');
   m.innerHTML=`<div class="sh"><h3>${title}</h3><form>${fields.map(f=>`<label>${f.l}${f.o?`<select name="${f.k}">${f.o.map(o=>`<option value="${esc(o[0])}" ${o[0]==f.v?'selected':''}>${esc(o[1])}</option>`).join('')}</select>`:`<input name="${f.k}" type="${f.t=='calc'||f.t=='number'?'text':f.t||'text'}" value="${esc(f.v==null?'':f.v)}" ${f.t=='datetime-local'?'step="1"':''} ${f.t=='calc'||f.t=='number'?'inputmode="none" data-calc="1" onfocus="kpOpen(this)" autocomplete="off"':''} ${f.dl?'list="dl_'+f.k+'"':''} ${f.t=='password'?'autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false"':''} ${f.r===0?'':'required'}>${f.dl?`<datalist id="dl_${f.k}">${f.dl.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>`:''}`}</label>`).join('')}<div class="row"><button type="button" class="g" onclick="closeM()">Batal</button><button class="p">Simpan</button></div></form></div>`;
   m.hidden=false;
+  {const cl=m.querySelector('[name=cl]');if(cl)addSw(cl)}
   m.querySelector('form').onsubmit=e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));
     for(const f of fields){if((f.t=='number'||f.t=='calc')&&d[f.k]!=null&&d[f.k]!==''){const v=ev(d[f.k]);if(isNaN(v)||v<0){alert('Angka tidak valid: '+f.l);return}d[f.k]=String(v)}}
     if(ok(d)===false)return;closeM();save();render()};
@@ -193,8 +194,10 @@ function addTx(t){
     {k:'c',l:'Kategori (ketik atau pilih)',v:'',dl:cats(t)},{k:'n',l:'Catatan',r:0},{k:'d',l:'Waktu',t:'datetime-local',v:now()}
   ],d=>{D().tx.push({id:uid(),d:d.d,t,a:+d.a,w:d.w,c:d.c,n:d.n})});
 }
-const VER='5.1';
+const VER='5.3';
 const CHANGES=[
+['5.3','Perbaikan pihak terhubung yang terpisah lagi (menghapus pihak terhubung kini ikut melepas pasangannya, menghubungkan ulang memakai pihak yang sudah ada, dan hubungan rusak diperbaiki otomatis). Tombol Kembali di kanan atas. Stok tampil juga dalam satuan kedua. Pilihan warna cepat untuk kategori, dompet, dan pihak. Estimasi laba kotor. Filter Bulan dan Dompet di Transaksi. Sinkronisasi mencoba lagi otomatis. Cadangan data juga di menu Sinkronisasi. Perbaikan pembulatan stok.'],
+['5.2','Hubung profil: uang yang dibayar atau diterima ikut masuk atau keluar dari dompet profil lawan, sedangkan utang dari faktur hanya dicatat sebagai utang tanpa mengubah saldo. Tombol Cadangkan data dan Pulihkan dari file.'],
 ['5.1','Bisa dipasang sebagai aplikasi di HP dan dibuka tanpa internet. Sinkronisasi lebih ringan: tabel laporan Sheets diperbarui berkala atau saat kamu meninggalkan halaman, ada tombol Perbarui tabel laporan. Kode rahasia kini disimpan di Script Properties Apps Script.'],
 ['5.0','Keypad kalkulator di semua kolom angka. Pemesanan: item diambil/belum dan bayar per item. Hubung profil dan Isi nama pihak. Tabungan: sumber Baru atau Dompet. Emoji dan warna untuk dompet, kategori, dan pihak. Ketuk kategori di Analisis untuk melihat transaksinya. Tema Gelap/Terang. Buku tutorial.'],
 ['4.1','Tombol Ikhlaskan di Pihak (hapus utang tanpa menambah saldo dompet). Pihak bisa dicari dan ditambah baru saat mencatat penjualan, diurutkan dari yang paling sering beli. Tulisan "faktur belum lunas" di Pihak dihapus.'],
@@ -274,7 +277,8 @@ const uprice=(p,u)=>p.unit2&&u==p.unit2?(p.price2!=null?p.price2:Math.round(p.pr
 const sc=(d,id,ym)=>{const a=d.tx.filter(x=>x.s==id&&x.d.startsWith(ym)),b=(d.sales||[]).filter(v=>v.s==id&&v.d.startsWith(ym));return{sales:a.reduce((s,x)=>s+x.a,0)+b.reduce((s,v)=>s+v.total,0),comm:a.reduce((s,x)=>s+(x.comm||0),0)+b.reduce((s,v)=>s+(v.comm||0),0)}};
 const invT=x=>{const sub=x.items.reduce((a,i)=>a+i.tot,0),dc=Math.min(x.disc||0,sub),tx=(sub-dc)*(x.tax||0)/100;return{sub,tx,total:Math.max(0,sub-dc+tx+(x.fee||0))}};
 const pdv=x=>x.party?(x.paidOn?Math.min(+x.paid||0,invT(x).total):0):invT(x).total;
-function fix(){S.profiles.forEach(p=>{p.sales=p.sales||[];p.buys=p.buys||[];p.orders=p.orders||[];p.cats=p.cats||{};(p.products||[]).forEach(x=>{x.stock=rnd(x.stock)});p.parties=p.parties||[];p.savings=p.savings||[];p.parties.forEach(x=>{x.ent.forEach(e=>{if(e.k=='p')e.k='y';if(e.k=='s')e.k='b'});if(p.type!='biz'){if(x.kind=='pelanggan')x.kind='terima';if(x.kind=='pemasok')x.kind='bayar'}})})}
+function fix(){fix0();healLinks()}
+function fix0(){S.profiles.forEach(p=>{p.sales=p.sales||[];p.buys=p.buys||[];p.orders=p.orders||[];p.cats=p.cats||{};(p.products||[]).forEach(x=>{x.stock=rnd(x.stock)});p.parties=p.parties||[];p.savings=p.savings||[];p.parties.forEach(x=>{x.ent.forEach(e=>{if(e.k=='p')e.k='y';if(e.k=='s')e.k='b'});if(p.type!='biz'){if(x.kind=='pelanggan')x.kind='terima';if(x.kind=='pemasok')x.kind='bayar'}})})}
 function toast(t){const o=$('#toast');if(o)o.remove();const e=document.createElement('div');e.id='toast';e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),6000)}
 const invRow=v=>{const rm=v.total-v.paid,by=v.kind=='buy';return `<div class="card li tap" onclick="openInv('${v.id}')"><div><b>${by?'Restock':'Faktur'} #${esc(v.no)}</b><br><small>${v.d.replace('T',' ')} · ${v.items.length} item</small></div><div style="text-align:right"><b>${rp(v.total)}</b><br><small class="${rm>0?(by?'out':'in'):''}">${rm>0?(by?'Utang ':'Belum dibayar ')+rp(rm):'Lunas'}</small></div></div>`};
 const invL=l=>l.length?'<h3>Catatan faktur</h3>'+[...l].sort((a,b)=>b.d.localeCompare(a.d)).map(invRow).join(''):'';
@@ -306,7 +310,7 @@ function kk(k){const e=KP.el;if(!e)return;if(k=='OK')return kpClose();let v=e.va
 document.addEventListener('focusin',e=>{const t=e.target;if(t.dataset&&t.dataset.calc)kpOpen(t);else if(KP.el&&!(t.closest&&t.closest('#kp')))kpClose()});
 $('#kg').innerHTML=KEYS.map(k=>`<button type="button" class="${k=='OK'?'kok':/[0-9.]/.test(k)?'':'ko'}" onclick="kk('${k}')">${k}</button>`).join('');
 function newInv(party,kind){const d=D(),k=kind||'sell',L=k=='buy'?d.buys:k=='order'?d.orders:d.sales;DR={kind:k,no:String(L.reduce((m,v)=>Math.max(m,+v.no||0),0)+1),d:now(),party:party||'',items:[],disc:0,tax:0,fee:0,paidOn:false,paid:'',only:false,w:d.wallets[0].id,s:'',note:'',u:{}};S.sub={k:'inv'};save();render()}
-function openInv(id){const d=D(),v=d.sales.find(x=>x.id==id)||d.buys.find(x=>x.id==id)||d.orders.find(x=>x.id==id);if(!v)return;const k=v.kind||'sell';DR={id:v.id,kind:k,no:v.no,d:v.d.length>10?v.d:v.d+'T00:00:00',party:v.party||'',items:JSON.parse(JSON.stringify(v.items)),disc:v.disc||0,tax:v.tax||0,fee:v.fee||0,paidOn:k=='order'?!!v.paidOn:v.paid>0&&!!v.party,paid:v.paid,only:!!v.only,w:v.w||d.wallets[0].id,s:v.s||'',note:v.note||'',u:{}};S.sub={k:'inv'};save();render()}
+function openInv(id){const d=D(),v=d.sales.find(x=>x.id==id)||d.buys.find(x=>x.id==id)||d.orders.find(x=>x.id==id);if(!v)return;const k=v.kind||'sell';DR={id:v.id,kind:k,no:v.no,d:v.d.length>10?v.d:v.d+'T00:00:00',party:v.party||'',items:JSON.parse(JSON.stringify(v.items)),disc:v.disc||0,tax:v.tax||0,fee:v.fee||0,paidOn:k=='order'?!!v.paidOn:v.paid>0&&!!v.party,paid:v.paid,only:!!v.only,w:v.w||d.wallets[0].id,w2:v.w2==null?'':v.w2,s:v.s||'',note:v.note||'',u:{}};S.sub={k:'inv'};save();render()}
 const pkRow=(i,n,ho)=>`<div class="li" style="margin-top:4px;gap:8px"><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" style="width:auto;margin:0" ${i.got?'checked':''} onchange="pickItem(${n},this.checked)">${i.got?'Sudah diambil':'Belum diambil'}</label>${i.got&&!ho?`<input type="text" inputmode="none" data-calc="1" onfocus="kpOpen(this)" autocomplete="off" style="width:45%" placeholder="Bayar (Rp)" value="${i.pay==null?'':i.pay}" oninput="DR.items[${n}].pay=ev(this.value)||0">`:''}</div>`;
 function pickItem(n,c){const i=DR.items[n];i.got=c;if(c&&i.pay==null)i.pay=i.tot;render()}
 function togGot(oid,n,c){const i=D().orders.find(x=>x.id==oid).items[n];i.got=c;if(c&&i.pay==null)i.pay=i.tot;save();render()}
@@ -371,7 +375,7 @@ function invv(d){
   ${x.items.length?`<div class="card"><b>Item ${od?'Pesanan':by?'Restock':'Tagihan'} (${x.items.length})</b>${od?` <button class="x" style="font-size:13px;color:var(--ac)" onclick="DR.items.forEach(i=>{i.got=true;if(i.pay==null)i.pay=i.tot});render()">Centang semua diambil</button>`:''}${x.items.map((i,n)=>`<div class="li t" style="display:block"><div class="li"><div><b>${esc(i.name)}</b><br><small>${fmtN(i.q)} ${esc(i.u)}${ho?'':' x '+rp(i.price)+(i.da?' − '+rp(i.da):'')}</small></div><div style="text-align:right">${ho?'':`<b>${rp(i.tot)}</b><br>`}<button class="x" onclick="editIt(${n})">✎</button><button class="x" onclick="DR.items.splice(${n},1);render()">🗑</button></div></div>${od?pkRow(i,n,ho):''}</div>`).join('')}${ho?'':`<div class="li t"><span class="mu">Subtotal</span><b>${rp(T.sub)}</b></div>`}</div>${ho?'':ln('disc','Diskon','-')+ln('tax','Pajak','+')+ln('fee','Biaya Tambahan','+')}`:''}
   ${od?`<div class="card"><div class="row2" style="gap:6px"><label class="li" style="justify-content:flex-start;gap:8px"><input type="checkbox" style="width:auto;margin:0" ${x.paidOn&&!ho?'checked':''} ${ho?'disabled':''} onchange="DR.paidOn=this.checked;if(this.checked&&!DR.paid)DR.paid=invT(DR).total;render()">Sudah bayar</label><label class="li" style="justify-content:flex-start;gap:8px"><input type="checkbox" style="width:auto;margin:0" ${ho?'checked':''} onchange="DR.only=this.checked;if(this.checked)DR.paidOn=false;render()">Pesan item saja</label></div>${ho?'':`<div class="li" style="margin-top:8px"><b>Jumlah Total</b><b id="tot">${rp(T.total)}</b></div>${x.paidOn?paidRow('Jumlah Dibayar'):''}`}</div>`
   :`<div class="card"><div class="li"><b>Jumlah Total</b><b id="tot">${rp(T.total)}</b></div>${pt?`<div class="li" style="margin-top:8px"><label><input type="checkbox" style="width:auto;margin:0 6px 0 0" ${x.paidOn?'checked':''} onchange="DR.paidOn=this.checked;if(this.checked&&!DR.paid)DR.paid=invT(DR).total;render()">${by?'Jumlah Dibayar':'Jumlah Diterima'}</label>${cal(x.paidOn?x.paid:'','DR.paid=ev(this.value)||0;upd()')}</div><div class="li out"><span>Saldo Terutang</span><b id="sdo">${rp(T.total-pv)}</b></div>`:''}</div>`}
-  ${!od&&pv>0?`<label class="mu">${by?'Dibayar dari':'Uang masuk ke'}${sel(wopts(),x.w,'DR.w')}</label>`:''}
+  ${!od&&pv>0?`<label class="mu">${by?'Dibayar dari':'Uang masuk ke'}${sel(wopts(),x.w,'DR.w')}</label>`:''}${!od&&pv>0&&linkOf(d,x)?`<label class="mu">Dompet di profil ${esc(linkOf(d,x).name)} (${by?'uang masuk':'uang keluar'} di sana)${sel([['','Tidak dicatat'],...linkOf(d,x).wallets.map(w=>[w.id,w.name])],lw2(d,x),'DR.w2')}</label>`:''}
   ${by?'':`<label class="mu">Staf penjual (komisi)${sel([['','Tanpa staf'],...d.staff.map(s=>[s.id,s.name])],x.s,'DR.s')}</label>`}
   <label class="mu">Catatan<input value="${esc(x.note)}" placeholder="Catatan atau keterangan" oninput="DR.note=this.value"></label>
   <div class="acts"><button class="p" style="flex:1" onclick="saveInv()">Simpan</button>${x.id?`<button class="g" onclick="delInv('${x.id}')">Hapus</button>`:''}${od&&x.id?`<button class="p" onclick="if(saveOrd()!==false)ord2inv('${x.id}')">Jadikan faktur (item diambil)</button>`:''}</div>`;
@@ -380,7 +384,7 @@ function pil(d){
   const q=(DR.q||'').toLowerCase(),buy=DR.kind=='buy';
   let l=d.products.filter(p=>(!DR.c||p.cat==DR.c)&&(p.name+' '+(p.cat||'')).toLowerCase().includes(q));
   if(!buy)l=[...l].sort((a,b)=>(a.stock<=0)-(b.stock<=0));
-  return l.map(p=>{const us=[p.unit||'pcs',...(p.unit2?[p.unit2]:[])],u=DR.u[p.id]||us[0];return `<div class="card tap" style="${!buy&&p.stock<=0?'opacity:.55':''}" onclick="itemDlg('${p.id}',-1)"><b>${esc(p.name)}</b><br><small>${esc(p.cat||'Umum')}</small><div class="li" style="margin-top:6px"><span>${rp(ip(p,u))} <select style="width:auto;display:inline-block" onclick="event.stopPropagation()" onchange="DR.u['${p.id}']=this.value;$('#pi').innerHTML=pil(D())">${us.map(z=>`<option ${z==u?'selected':''}>${esc(z)}</option>`).join('')}</select></span><small class="${p.stock<=mn(p)?'out':''}">Stok: ${fmtN(p.stock)} ${esc(p.unit||'pcs')}</small></div></div>`}).join('')||'<p class="mu">Belum ada barang. Ketuk Tambah Item untuk membuat.</p>';
+  return l.map(p=>{const us=[p.unit||'pcs',...(p.unit2?[p.unit2]:[])],u=DR.u[p.id]||us[0];return `<div class="card tap" style="${!buy&&p.stock<=0?'opacity:.55':''}" onclick="itemDlg('${p.id}',-1)"><b>${esc(p.name)}</b><br><small>${esc(p.cat||'Umum')}</small><div class="li" style="margin-top:6px"><span>${rp(ip(p,u))} <select style="width:auto;display:inline-block" onclick="event.stopPropagation()" onchange="DR.u['${p.id}']=this.value;$('#pi').innerHTML=pil(D())">${us.map(z=>`<option ${z==u?'selected':''}>${esc(z)}</option>`).join('')}</select></span><small class="${p.stock<=mn(p)?'out':''}">Stok: ${fmtN(p.stock)} ${esc(p.unit||'pcs')}${p.unit2?' (= '+fmtN(p.stock*(p.conv||1))+' '+esc(p.unit2)+')':''}</small></div></div>`}).join('')||'<p class="mu">Belum ada barang. Ketuk Tambah Item untuk membuat.</p>';
 }
 function pickv(d){
   const cs=[...new Set(d.products.map(p=>p.cat).filter(Boolean))];
@@ -397,8 +401,8 @@ function itemDlg(pid,idx){
   f.onsubmit=e=>{
     e.preventDefault();const q=ev(f.q.value),u=f.u.value,h=ev(f.h.value);
     if(!(q>0)||isNaN(h)){alert('Isi jumlah dan harga dengan benar.');return}
-    const g=q*h,da=Math.min(ev(f.da.value)||0,g),it={p:p.id,name:p.name,q,u,qb:rnd(q/(p.unit2&&u==p.unit2?(p.conv||1):1)),price:h,dp:ev(f.dp.value)||0,da,tot:Math.round((g-da)*100)/100};
-    if(o){it.got=o.got;it.pay=o.pay}if(idx>=0)DR.items[idx]=it;else DR.items.push(it);
+    const g=q*h,da=Math.min(ev(f.da.value)||0,g),it={p:p.id,name:p.name,q,u,qb:rnd(q/(p.unit2&&u==p.unit2?(p.conv||1):1)),price:h,dp:ev(f.dp.value)||0,da,tot:Math.round((g-da)*100)/100,cost:p.cost||0};
+    if(o){it.got=o.got;it.pay=o.pay;if(o.cost!=null)it.cost=o.cost}if(idx>=0)DR.items[idx]=it;else DR.items.push(it);
     DR.pick=0;closeM();render();
   };
 }
@@ -423,8 +427,8 @@ function saveInv(){
     if(after<0)return alert(buy?`Stok ${p.name} akan menjadi negatif.`:`Stok ${p.name} tidak cukup (sisa ${fmtN(p.stock+back)} ${p.unit||'pcs'}).`);
   }
   if(old)revInv(d,old);
-  const v=Object.assign(old||{id:uid()},{no:x.no,d:x.d,party:x.party,items:x.items,disc:x.disc,tax:x.tax,fee:x.fee,total:T.total,paid:pv,w:x.w,note:x.note});
-  if(buy)v.kind='buy';else{const s=d.staff.find(s=>s.id==x.s);v.s=x.s;v.comm=s?T.total*s.pct/100:0}
+  const v=Object.assign(old||{id:uid()},{no:x.no,d:x.d,party:x.party,items:x.items,disc:x.disc,tax:x.tax,fee:x.fee,total:T.total,paid:pv,w:x.w,w2:lw2(d,x),note:x.note});
+  if(buy)v.kind='buy';else{const s=d.staff.find(s=>s.id==x.s);v.s=x.s;v.comm=s?T.total*s.pct/100:0;v.lk=x.items.every(i=>i.cost!=null)?Math.round((T.sub-Math.min(x.disc||0,T.sub)-x.items.reduce((a,i)=>a+i.qb*i.cost,0))*100)/100:null}
   if(!old)L.push(v);
   x.items.forEach(i=>{const p=d.products.find(p=>p.id==i.p);if(!p)return;p.stock=rnd(p.stock+(buy?i.qb:-i.qb));if(buy&&i.qb>0)p.cost=Math.round(i.tot/i.qb*100)/100});
   const pt=d.parties.find(p=>p.id==x.party),lb=(buy?'Restock #':'Faktur #')+x.no;
@@ -446,16 +450,70 @@ function delInv(id){
   if(S.sub&&S.sub.k=='inv'){S.sub=null;DR=null}
   save();render();
 }
+function addSw(cl){
+  const sw=['#e5484d','#f76b15','#e8b84b','#46a758','#3fd0c0','#5ba8e8','#2f55d4','#b388f0','#ff7fa8','#8b8d98'],b=document.createElement('div');
+  b.className='chips';b.innerHTML=sw.map(c=>`<button type="button" aria-label="Pilih warna" style="width:34px;height:34px;padding:0;border-radius:50%;background:${c}" onclick="this.closest('form').cl.value='${c}'"></button>`).join('');
+  cl.after(b);
+}
+function healLinks(){
+  S.profiles.forEach(p=>p.parties.forEach(x=>{
+    if(!x.link)return;
+    const q=S.profiles.find(z=>z.id==x.link),y=q&&q.parties.find(z=>z.id==x.pair);
+    if(!y||y.link!=p.id||y.pair!=x.id){delete x.link;delete x.pair}
+  }));
+  S.profiles.forEach(p=>p.parties.filter(x=>x.link).forEach(x=>{
+    const nm=x.name.trim().toLowerCase();
+    p.parties=p.parties.filter(y=>!(y!==x&&!y.link&&y.name.trim().toLowerCase()==nm&&!y.ent.length&&!p.tx.some(t=>t.pt==y.id)&&![...(p.sales||[]),...(p.buys||[]),...(p.orders||[])].some(v=>v.party==y.id)));
+  }));
+}
+const labaCard=(d,ym)=>{
+  const l=d.sales.filter(v=>v.d.startsWith(ym));if(!l.length)return '';
+  const k=l.filter(v=>v.lk!=null),lk=k.reduce((s,v)=>s+v.lk,0),sk=l.length-k.length;
+  return `<div class="card" style="margin-top:8px"><small>Estimasi laba kotor bulan ini</small><b class="${lk>=0?'in':'out'}" style="display:block;font-size:18px">${rp(lk)}</b><small>${sk?sk+' faktur lama belum termasuk (tanpa catatan modal)':'Penjualan dikurangi modal saat transaksi'}</small></div>`;
+};
 const wext=w=>[{k:'e',l:'Emoji ikon (opsional, mis. 💳)',r:0,v:w&&w.emoji?w.emoji:''},{k:'cl',l:'Warna ikon',t:'color',v:w&&w.color?w.color:'#2f55d4'}];
 const wic=w=>`<span class="ic" style="background:${w.color||'#2f55d4'}33">${esc(w.emoji||ICON[w.type])}</span>`;
 const pav=p=>`<div class="av" style="${p.color?`background:${p.color}33;color:${p.color}`:''}">${p.emoji?esc(p.emoji):esc(p.name[0].toUpperCase())}</div>`;
 const cic=(d,c)=>{const k=d.cats&&d.cats[(c||'').trim()];return k&&k.emoji?`<span class="ic sm" style="background:${k.color||'#2f55d4'}33">${esc(k.emoji)}</span>`:''};
+const linkOf=(d,x)=>{const pt=d.parties.find(p=>p.id==x.party);return pt&&pt.link?S.profiles.find(z=>z.id==pt.link):null};
+const lw2=(d,x)=>{const oq=linkOf(d,x);return oq?(x.w2==null?(oq.wallets[0]?oq.wallets[0].id:''):x.w2):''};
 function syncLinks(){
-  S.profiles.forEach(p=>p.parties.forEach(x=>{x.ent=x.ent.filter(e=>!e.mir)}));
+  S.profiles.forEach(p=>{p.tx=p.tx.filter(t=>!t.mir);p.parties.forEach(x=>{x.ent=x.ent.filter(e=>!e.mir)})});
   S.profiles.forEach(p=>p.parties.forEach(x=>{
     if(!x.link)return;const q=S.profiles.find(z=>z.id==x.link);if(!q)return;const y=q.parties.find(z=>z.id==x.pair);if(!y)return;
-    x.ent.filter(e=>!e.mir).forEach(e=>y.ent.push({id:'m'+e.id,k:e.k=='y'?'b':'y',a:e.a,d:e.d,n:e.n||'',mir:p.id,ikhlas:e.ikhlas?1:0}));
+    x.ent.filter(e=>!e.mir).forEach(e=>{
+      y.ent.push({id:'m'+e.id,k:e.k=='y'?'b':'y',a:e.a,d:e.d,n:e.n||'',mir:p.id,ikhlas:e.ikhlas?1:0});
+      if(e.w2&&!e.inv&&!e.ikhlas&&q.wallets.some(w=>w.id==e.w2)){
+        const t=e.k=='y'?'in':'out';
+        q.tx.push({id:'mt'+e.id,d:e.d,t,a:e.a,w:e.w2,c:(t=='in'?'Terima dari ':'Bayar ke ')+p.name,n:e.n||'',tf:'m'+e.id,pt:y.id,mir:1,cnt:(q.type=='biz'&&((y.kind=='pelanggan'&&t=='in')||(y.kind=='pemasok'&&t=='out')))?1:0});
+      }
+    });
+    [...(p.sales||[]),...(p.buys||[])].filter(v=>v.party==x.id&&v.w2&&v.paid>0&&q.wallets.some(w=>w.id==v.w2)).forEach(v=>{
+      const buy=v.kind=='buy';
+      q.tx.push({id:'mt'+v.id,d:v.d,t:buy?'in':'out',a:v.paid,w:v.w2,c:buy?'Penjualan ke '+p.name:'Belanja di '+p.name,n:'Faktur #'+v.no,mir:1});
+    });
   }));
+}
+function backup(){
+  const o={app:'catatan-keuangan',versi:VER,dibuat:new Date().toISOString(),profiles:S.profiles};
+  const b=new Blob([JSON.stringify(o)],{type:'application/json'}),a=document.createElement('a');
+  a.href=URL.createObjectURL(b);a.download='cadangan-keuangan-'+today()+'.json';document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('Cadangan diunduh. Simpan filenya di tempat aman.');
+}
+function restore(){
+  const i=document.createElement('input');i.type='file';i.accept='.json,application/json';
+  i.onchange=()=>{
+    const f=i.files[0];if(!f)return;const r=new FileReader();
+    r.onload=()=>{
+      let o;try{o=JSON.parse(r.result)}catch(e){return alert('File tidak bisa dibaca. Pastikan ini file cadangan (.json) dari aplikasi ini.')}
+      const ps=o&&o.profiles;
+      if(!Array.isArray(ps)||!ps.length||!ps.every(p=>p&&p.id&&Array.isArray(p.wallets)&&Array.isArray(p.tx)))return alert('Isi file ini bukan cadangan aplikasi ini.');
+      if(!confirm('Pulihkan '+ps.length+' profil dari file ini?\n\nSemua data di perangkat ini akan DIGANTI. Jika sinkronisasi Google Sheets aktif, data di Sheets juga akan diganti.'))return;
+      S.profiles=ps;S.cur=null;S.sub=null;fix();S.updated=Date.now();closeM();save();render();toast('Data dipulihkan dari file cadangan.');
+    };
+    r.readAsText(f);
+  };
+  i.click();
 }
 function themeDlg(){
   const t=document.documentElement.dataset.theme,m=$('#m');
@@ -472,13 +530,15 @@ function linkPf(){
 function doLink(){
   const ids=[...document.querySelectorAll('.lkc:checked')].map(c=>c.value);
   if(ids.length<2)return alert('Pilih minimal 2 profil.');
+  healLinks();
   let n=0;const dk=p=>p.type=='biz'?'pelanggan':'terima',ic=p=>p.type=='biz'?'🏪':'👤';
   for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){
     const A=S.profiles.find(p=>p.id==ids[i]),B=S.profiles.find(p=>p.id==ids[j]);
     if(A.parties.some(x=>x.link==B.id))continue;
-    const ia=uid(),ib=uid();
-    A.parties.push({id:ia,name:B.name,kind:dk(A),ent:[],link:B.id,pair:ib,emoji:ic(B)});
-    B.parties.push({id:ib,name:A.name,kind:dk(B),ent:[],link:A.id,pair:ia,emoji:ic(A)});
+    const nm=x=>x.trim().toLowerCase(),fa=A.parties.find(x=>!x.link&&nm(x.name)==nm(B.name)),fb=B.parties.find(x=>!x.link&&nm(x.name)==nm(A.name));
+    const ia=fa?fa.id:uid(),ib=fb?fb.id:uid();
+    if(fa){fa.link=B.id;fa.pair=ib}else A.parties.push({id:ia,name:B.name,kind:dk(A),ent:[],link:B.id,pair:ib,emoji:ic(B)});
+    if(fb){fb.link=A.id;fb.pair=ia}else B.parties.push({id:ib,name:A.name,kind:dk(B),ent:[],link:A.id,pair:ia,emoji:ic(A)});
     n++;
   }
   closeM();save();render();toast(n?n+' hubungan dibuat. Pihak otomatis ditambahkan di tiap profil.':'Profil itu sudah terhubung.');
@@ -508,17 +568,18 @@ function doFill(){
 }
 const TUT={
 umum:[
-['Membuat dan membuka profil',['Di layar awal ketuk + Profil baru.','Pilih Manajemen Usaha atau Keuangan Pribadi, lalu beri nama.','Ketuk kartu profil untuk membukanya. Tombol ← di kiri atas untuk kembali.','Ketuk ✎ untuk mengganti nama, atau × untuk menghapus profil beserta datanya.']],
+['Membuat dan membuka profil',['Di layar awal ketuk + Profil baru.','Pilih Manajemen Usaha atau Keuangan Pribadi, lalu beri nama.','Ketuk kartu profil untuk membukanya. Tombol ← Kembali di kanan atas untuk kembali.','Ketuk ✎ untuk mengganti nama, atau × untuk menghapus profil beserta datanya.']],
 ['Dompet (tunai, e-wallet, bank)',['Di Beranda terlihat semua dompet beserta saldonya.','Ketuk sebuah dompet untuk mengubah nama, saldo awal, emoji, dan warna ikonnya.','Ketuk + Tambah dompet untuk dompet baru, misalnya GoPay atau BCA.']],
 ['Mencatat pemasukan dan pengeluaran',['Di Beranda ketuk + Pemasukan atau + Pengeluaran.','Isi jumlah, pilih dompet, tulis kategori (boleh pilih dari saran), catatan, dan waktu sampai detik.','Ketuk Simpan. Saldo dompet langsung berubah.','Untuk mengubah, ketuk transaksinya di tab Transaksi. Untuk menghapus, ketuk ×.']],
 ['Transfer antar dompet',['Di Beranda ketuk Transfer.','Pilih dompet asal dan tujuan, lalu isi jumlah dan biaya admin bila ada.','Transfer tidak dihitung sebagai pemasukan atau pengeluaran. Hanya biaya admin yang dihitung sebagai pengeluaran.']],
 ['Kalkulator di keyboard',['Setiap kolom angka memakai keypad kalkulator di bagian bawah layar.','Ketik hitungan, misalnya 1500×3+200. Hasilnya tampil di atas keypad.','Ketuk = untuk mengubah hitungan menjadi hasil, atau OK untuk menutup keypad.']],
-['Mencari transaksi',['Buka tab Transaksi.','Ketik nama kategori atau catatan di kolom pencarian.','Total masuk dan keluar dari hasil pencarian tampil di bawahnya.']],
-['Analisis dan kategori',['Buka tab Analisis dan pilih bulan di kanan atas.','Pilih Pengeluaran atau Pemasukan, lalu kelompokkan per Kategori atau Dompet.','Ketuk sebuah baris di bawah grafik untuk melihat semua transaksinya.','Ketuk ✎ pada baris kategori untuk mengganti emoji dan warnanya.']],
-['Menghubungkan profil',['Di layar awal ketuk 🔗 Hubung profil.','Centang dua profil atau lebih, lalu ketuk Hubungkan.','Tiap profil otomatis mendapat pihak bernama profil lainnya (bertanda 🔗).','Catatan utang-piutang di satu sisi otomatis muncul di sisi lainnya dengan jenis yang berlawanan. Catatan otomatis hanya bisa diubah dari profil asalnya.','Untuk memutus, buka lagi Hubung profil lalu ketuk × pada pasangan yang ingin diputus.']],
+['Mencari dan menyaring transaksi',['Buka tab Transaksi.','Ketik nama kategori atau catatan di kolom pencarian.','Pilih Semua atau Bulan (sesuai bulan di kanan atas), dan pilih dompet untuk mempersempit daftar.','Total masuk dan keluar dari hasil tampil di bawahnya. Daftar menampilkan maksimal 200 transaksi terbaru.']],
+['Analisis dan kategori',['Buka tab Analisis dan pilih bulan di kanan atas.','Pilih Pengeluaran atau Pemasukan, lalu kelompokkan per Kategori atau Dompet.','Ketuk sebuah baris di bawah grafik untuk melihat semua transaksinya.','Ketuk bulatan warna atau ✎ pada baris kategori untuk mengganti emoji dan warnanya.']],
+['Menghubungkan profil',['Di layar awal ketuk 🔗 Hubung profil.','Centang dua profil atau lebih, lalu ketuk Hubungkan.','Tiap profil otomatis mendapat pihak bernama profil lainnya (bertanda 🔗).','Faktur yang dicatat sebagai utang tidak mengubah saldo dompet profil lawan. Yang tercatat hanya utangnya.','Saat satu profil membayar atau menerima uang (lewat + Catat di pihak, atau jumlah dibayar di faktur), pilih dompet di profil lawan. Uangnya otomatis masuk atau keluar dari dompet itu di profil lawan.','Catatan dan transaksi otomatis ditandai dan hanya bisa diubah dari profil asalnya.','Untuk memutus, buka lagi Hubung profil lalu ketuk × pada pasangan yang ingin diputus.']],
 ['Menyalin nama pihak antar profil',['Di layar awal ketuk Isi nama pihak.','Pilih profil asal dan profil tujuan.','Centang nama yang ingin disalin, lalu ketuk Salin.']],
 ['Tema Gelap atau Terang',['Ketuk 🎨 Tema di bawah judul, lalu pilih Gelap atau Terang.','Pilihan tersimpan di perangkat ini.']],
 ['Sinkronisasi ke Google Sheets',['Ketuk ⚙ Sinkronisasi, lalu isi URL Web App dan kode rahasia.','Setelah terhubung, perubahan tersimpan otomatis. Status tampil di sebelah tombolnya.','Kode rahasia disensor. Kosongkan kolomnya jika tidak ingin menggantinya.']],
+['Cadangkan dan pulihkan data',['Di layar awal, ketuk 💾 Cadangkan data. File .json akan diunduh. Simpan di tempat aman, misalnya Google Drive.','Untuk memulihkan, ketuk ♻️ Pulihkan dari file lalu pilih file cadangan.','Pemulihan mengganti semua data di perangkat itu. Bila sinkronisasi Google Sheets aktif, data di Sheets juga ikut diganti.','File cadangan tidak dienkripsi, jadi jangan dibagikan.']],
 ['Memasang sebagai aplikasi di HP',['Buka website ini di Chrome.','Ketuk menu ⋮ di kanan atas, lalu pilih Pasang aplikasi (atau Tambahkan ke layar utama).','Setelah terpasang, aplikasi bisa dibuka dari layar utama dan tetap bisa dipakai tanpa internet. Data disinkronkan lagi saat internet kembali.']],
 ['Ekspor ke Excel',['Di Beranda, ketuk Ekspor ke Excel di bawah daftar dompet.','File berisi transaksi, dompet, pihak, dan data lain dari semua profil.']]],
 pribadi:[
@@ -531,6 +592,7 @@ biz:[
 ['Restock (beli barang)',['Di Beranda ketuk Restock.','Tambahkan banyak item sekaligus lewat + Tambah Item, lengkap dengan diskon, pajak, dan biaya tambahan.','Pilih pemasok bila perlu, lalu isi jumlah yang dibayar. Sisanya tercatat sebagai utang ke pemasok.','Setelah Simpan, stok bertambah dan harga beli barang diperbarui.']],
 ['Pemesanan',['Buka tab Pemesanan, lalu ketuk + Pemesanan baru.','Pilih pihak pemesan dan tambahkan item pesanan.','Kotak Sudah bayar untuk pemesan yang sudah membayar. Kotak Pesan item saja untuk mencatat item tanpa harga.','Pada tiap item, centang Sudah diambil saat barang diambil, lalu isi Bayar untuk item itu.','Ketuk Jadikan faktur (item diambil) agar item yang sudah diambil menjadi faktur penjualan. Item yang belum diambil tetap ada di pesanan.','Pesanan yang menunggu juga tampil di Beranda sebagai pengingat.']],
 ['Pihak, faktur, dan Ikhlaskan',['Pihak diurutkan dari yang paling sering membeli.','Di dalam pihak, faktur dan riwayat uang disatukan dalam satu daftar.','Hijau Terima berarti pembeli berutang padamu. Merah Bayar berarti kamu berutang ke pemasok.','Gunakan + Catat untuk mencatat pembayaran utang, atau Ikhlaskan untuk menghapus utang tanpa menambah saldo dompet.']],
+['Estimasi laba kotor',['Setiap penjualan menyimpan harga beli (modal) barang saat transaksi itu.','Di Beranda tampil Estimasi laba kotor bulan ini, yaitu penjualan (setelah diskon) dikurangi modal.','Faktur lama yang dibuat sebelum fitur ini belum termasuk dan ditandai di kartunya.']],
 ['Staf dan gaji',['Buka tab Staf, lalu ketuk + Tambah staf. Isi gaji pokok dan persen komisi.','Saat mencatat penjualan, pilih staf penjualnya.','Di tab Staf terlihat penjualan, komisi, dan total gaji bulan itu. Ganti bulan di kanan atas.','Ketuk Bayar gaji untuk mencatatnya sebagai pengeluaran.']],
 ['Stok menipis dan riwayat barang',['Barang yang stoknya sudah di bawah batas memunculkan gelembung peringatan di Beranda. Ketuk × untuk menutupnya. Peringatan muncul lagi saat website dibuka ulang.','Ketuk Riwayat pada kartu barang untuk melihat siapa saja yang membeli dan semua transaksi barang itu.']]]};
 function showTut(){
@@ -553,7 +615,7 @@ function back(){if(S.sub&&S.sub.k=='inv'){if(DR&&DR.pick){DR.pick=0;render();ret
 const pk=()=>D().type=='biz'?[['pelanggan','Pelanggan'],['pemasok','Pemasok']]:[['terima','Terima'],['bayar','Bayar']];
 
 function profs(){
-  return `<h3>Profil saya</h3>${S.profiles.map(p=>`<div class="card li tap" onclick="S.cur='${p.id}';S.tab='home';S.sub=null;save();render()"><div><b>${p.type=='biz'?'🏪':'👤'} ${esc(p.name)}</b><br><small>${p.type=='biz'?'Manajemen usaha':'Keuangan pribadi'} · ${rp(p.wallets.reduce((a,w)=>a+balOf(p,w),0))}</small></div><span><button class="x" onclick="event.stopPropagation();renP('${p.id}')">✎</button><button class="x" onclick="event.stopPropagation();delPf('${p.id}')">×</button></span></div>`).join('')||'<p class="mu">Belum ada profil. Buat yang pertama.</p>'}<div class="chips"><button class="p" onclick="addProfile()">+ Profil baru</button><button class="g" onclick="linkPf()">🔗 Hubung profil</button><button class="g" onclick="fillNames()">Isi nama pihak</button></div>`;
+  return `<h3>Profil saya</h3>${S.profiles.map(p=>`<div class="card li tap" onclick="S.cur='${p.id}';S.tab='home';S.sub=null;save();render()"><div><b>${p.type=='biz'?'🏪':'👤'} ${esc(p.name)}</b><br><small>${p.type=='biz'?'Manajemen usaha':'Keuangan pribadi'} · ${rp(p.wallets.reduce((a,w)=>a+balOf(p,w),0))}</small></div><span><button class="x" onclick="event.stopPropagation();renP('${p.id}')">✎</button><button class="x" onclick="event.stopPropagation();delPf('${p.id}')">×</button></span></div>`).join('')||'<p class="mu">Belum ada profil. Buat yang pertama.</p>'}<div class="chips"><button class="p" onclick="addProfile()">+ Profil baru</button><button class="g" onclick="linkPf()">🔗 Hubung profil</button><button class="g" onclick="fillNames()">Isi nama pihak</button></div><div class="chips"><button class="g" onclick="backup()">💾 Cadangkan data</button><button class="g" onclick="restore()">♻️ Pulihkan dari file</button></div>`;
 }
 function addProfile(){
   const m=$('#m');
@@ -566,6 +628,7 @@ function delPf(id){const p=S.profiles.find(x=>x.id==id);if(confirm(`Hapus profil
 
 function editTx(id){
   const d0=D(),x=d0.tx.find(t=>t.id==id);if(!x)return;
+  if(x.mir)return alert('Transaksi ini otomatis dari profil yang terhubung. Ubah dari profil asalnya.');
   if(x.inv)return openInv(x.inv);
   if(x.tf)return alert(x.pt?'Ubah lewat menu Pihak.':x.sv?'Ubah lewat menu Tabungan.':'Transfer tidak bisa diedit. Hapus lalu buat ulang.');
   const dt=x.d.length>10?x.d:x.d+'T00:00:00',W={k:'d',l:'Waktu',t:'datetime-local',v:dt};
@@ -607,18 +670,24 @@ function ptd(d){
 }
 function addPt(sel,nm){form('Pihak baru',[{k:'n',l:'Nama',v:nm||''},{k:'k',l:'Jenis',o:pk(),v:D().type=='biz'?(sel&&DR&&DR.kind=='buy'?'pemasok':'pelanggan'):undefined},...wext(null)],d=>{const p={id:uid(),name:d.n,kind:d.k,ent:[],emoji:d.e.trim(),color:d.cl};D().parties.push(p);if(sel&&DR)DR.party=p.id})}
 function editPt(id){const p=D().parties.find(x=>x.id==id);form('Ubah pihak',[{k:'n',l:'Nama',v:p.name},{k:'k',l:'Jenis',o:pk(),v:p.kind},...wext(p)],d=>{p.name=d.n;p.kind=d.k;p.emoji=d.e.trim();p.color=d.cl})}
-function delPt(id){if(!confirm('Hapus pihak ini beserta riwayat dan transaksi dompet yang terkait?'))return;const d=D();d.tx=d.tx.filter(t=>t.pt!=id);d.parties=d.parties.filter(p=>p.id!=id);S.sub=null;save();render()}
+function delPt(id){if(!confirm('Hapus pihak ini beserta riwayat dan transaksi dompet yang terkait?'))return;const d=D();const gp=d.parties.find(p=>p.id==id);if(gp&&gp.link){const q=S.profiles.find(z=>z.id==gp.link);if(q)q.parties.forEach(t=>{if(t.pair==id){delete t.link;delete t.pair}})}d.tx=d.tx.filter(t=>t.pt!=id);d.parties=d.parties.filter(p=>p.id!=id);S.sub=null;save();render()}
 function delEnt(pid,eid){const e0=D().parties.find(x=>x.id==pid).ent.find(x=>x.id==eid);if(e0&&e0.mir)return alert('Catatan ini otomatis dari profil yang terhubung. Hapus dari profil asalnya.');if(!confirm('Hapus catatan ini?'))return;const d=D(),p=d.parties.find(x=>x.id==pid);p.ent=p.ent.filter(e=>e.id!=eid);d.tx=d.tx.filter(t=>t.tf!=eid);save();render()}
 function entForm(pid,eid){
-  const d0=D(),p=d0.parties.find(x=>x.id==pid),e=eid?p.ent.find(x=>x.id==eid):null;if(e&&e.inv)return openInv(e.inv);if(e&&e.mir)return alert('Catatan ini otomatis dari profil yang terhubung. Ubah dari profil asalnya.');if(e&&e.ikhlas)return alert('Catatan ikhlas tidak bisa diedit. Hapus dengan tombol × lalu buat lagi jika perlu.');const lt=e&&d0.tx.find(t=>t.tf==eid);
-  form(e?'Ubah catatan':'Catat utang-piutang',[{k:'k',l:'Jenis',o:KO,v:e?e.k:'p'},{k:'a',l:'Jumlah (Rp)',t:'number',v:e?e.a:''},{k:'w',l:'Catat juga di dompet',o:[['','Tidak dicatat di dompet'],...wopts()],v:lt?lt.w:''},{k:'n',l:'Catatan',r:0,v:e?e.n:''},{k:'d',l:'Waktu',t:'datetime-local',v:e?e.d:now()}],d=>{
-    const en=e||{id:uid()};Object.assign(en,{k:d.k,a:+d.a,d:d.d,n:d.n});if(!e)p.ent.push(en);
+  const d0=D(),p=d0.parties.find(x=>x.id==pid),e=eid?p.ent.find(x=>x.id==eid):null;
+  if(e&&e.inv)return openInv(e.inv);
+  if(e&&e.mir)return alert('Catatan ini otomatis dari profil yang terhubung. Ubah dari profil asalnya.');
+  if(e&&e.ikhlas)return alert('Catatan ikhlas tidak bisa diedit. Hapus dengan tombol × lalu buat lagi jika perlu.');
+  const lt=e&&d0.tx.find(t=>t.tf==eid),oq=p.link?S.profiles.find(z=>z.id==p.link):null;
+  const f=[{k:'k',l:'Jenis',o:KO,v:e?e.k:'b'},{k:'a',l:'Jumlah (Rp)',t:'number',v:e?e.a:''},{k:'w',l:'Catat juga di dompet',o:[['','Tidak dicatat di dompet'],...wopts()],v:lt?lt.w:(!e&&oq?d0.wallets[0].id:'')}];
+  if(oq)f.push({k:'w2',l:'Dompet di profil '+esc(oq.name)+' (uangnya masuk atau keluar di sana)',o:[['','Tidak dicatat'],...oq.wallets.map(w=>[w.id,w.name])],v:e?(e.w2||''):(oq.wallets[0]?oq.wallets[0].id:'')});
+  f.push({k:'n',l:'Catatan',r:0,v:e?e.n:''},{k:'d',l:'Waktu',t:'datetime-local',v:e?e.d:now()});
+  form(e?'Ubah catatan':'Catat utang-piutang',f,d=>{
+    const en=e||{id:uid()};Object.assign(en,{k:d.k,a:+d.a,d:d.d,n:d.n,w2:d.w2||''});if(!e)p.ent.push(en);
     d0.tx=d0.tx.filter(t=>t.tf!=en.id);
     const cnt=d0.type=='biz'&&((p.kind=='pelanggan'&&d.k=='b')||(p.kind=='pemasok'&&d.k=='y'))?1:0;
     if(d.w)d0.tx.push({id:uid(),d:d.d,t:'py'.includes(d.k)?'out':'in',a:+d.a,w:d.w,c:KL[d.k],n:p.name,tf:en.id,pt:p.id,cnt});
   });
 }
-
 function anaItems(d,t,ym){
   const m=d.tx.filter(x=>x.t==t&&x.d.startsWith(ym)&&cn(x));
   if(t=='in')d.savings.forEach(s=>s.log.forEach(l=>{if(l.src=='baru'&&l.a>0&&l.d.startsWith(ym))m.push({t:'in',a:l.a,c:'Tabungan',w:null,d:l.d,n:s.name,syn:1})}));
@@ -633,7 +702,7 @@ function ana(d,b,ym){
   let off=0;
   const arcs=ar.map(([k,v],i)=>{const p=v/tot*100,r=`<circle class="sl" r="15.9155" cx="21" cy="21" fill="none" stroke="${col(k,i)}" stroke-width="6" stroke-dasharray="${p} ${100-p}" stroke-dashoffset="${-off}"/>`;off+=p;return r}).join('');
   const tg=(k,v,l)=>`<button class="${(k=='at'?t:g)==v?'p':'g'}" onclick="S.${k}='${v}';save();render()">${l}</button>`;
-  return `<div class="chips">${tg('at','out','Pengeluaran')}${tg('at','in','Pemasukan')}</div><div class="chips">${tg('ag','c','Kategori')}${tg('ag','w','Dompet')}</div>${tot?`<svg viewBox="0 0 42 42" style="width:100%;max-width:300px;display:block;margin:8px auto"><g transform="rotate(-90 21 21)">${arcs}</g><text x="21" y="20" text-anchor="middle" font-size="2.6" fill="var(--mu)">${t=='out'?'Pengeluaran':'Pemasukan'}</text><text x="21" y="24" text-anchor="middle" font-size="3.4" font-weight="800" fill="currentColor">${rp(tot)}</text></svg><p class="mu" style="text-align:center;margin:0">Ketuk baris untuk melihat transaksinya</p>${ar.map(([k,v],i)=>`<div class="card li tap" onclick="catTx(${i})"><span style="display:flex;align-items:center">${st(k).emoji?`<span class="ic sm" style="background:${col(k,i)}33">${esc(st(k).emoji)}</span>`:`<i class="dot" style="background:${col(k,i)}"></i>`}${esc(k)} <small style="margin-left:6px">${Math.round(v/tot*100)}%</small></span><span><b>${rp(v)}</b>${g=='c'?`<button class="x" onclick="event.stopPropagation();catEdit(${i})" aria-label="Ubah tampilan">✎</button>`:''}</span></div>`).join('')}`:'<p class="mu">Belum ada data untuk bulan ini.</p>'}`;
+  return `<div class="chips">${tg('at','out','Pengeluaran')}${tg('at','in','Pemasukan')}</div><div class="chips">${tg('ag','c','Kategori')}${tg('ag','w','Dompet')}</div>${tot?`<svg viewBox="0 0 42 42" style="width:100%;max-width:300px;display:block;margin:8px auto"><g transform="rotate(-90 21 21)">${arcs}</g><text x="21" y="20" text-anchor="middle" font-size="2.6" fill="var(--mu)">${t=='out'?'Pengeluaran':'Pemasukan'}</text><text x="21" y="24" text-anchor="middle" font-size="3.4" font-weight="800" fill="currentColor">${rp(tot)}</text></svg><p class="mu" style="text-align:center;margin:0">Ketuk baris untuk melihat transaksinya.${g=='c'?' Ketuk bulatan warna atau ✎ untuk mengganti emoji dan warna kategori.':''}</p>${ar.map(([k,v],i)=>`<div class="card li tap" onclick="catTx(${i})"><span style="display:flex;align-items:center">${st(k).emoji?`<span class="ic sm" style="background:${col(k,i)}33" ${g=='c'?`onclick="event.stopPropagation();catEdit(${i})"`:''}>${esc(st(k).emoji)}</span>`:`<i class="dot" style="background:${col(k,i)}" ${g=='c'?`onclick="event.stopPropagation();catEdit(${i})"`:''}></i>`}${esc(k)} <small style="margin-left:6px">${Math.round(v/tot*100)}%</small></span><span><b>${rp(v)}</b>${g=='c'?`<button class="x" onclick="event.stopPropagation();catEdit(${i})" aria-label="Ubah tampilan">✎</button>`:''}</span></div>`).join('')}`:'<p class="mu">Belum ada data untuk bulan ini.</p>'}`;
 }
 function catTx(i){
   const d=D(),t=S.at||'out',g=S.ag||'c',k=window.ANA[i],ym=S.ym;
@@ -685,10 +754,10 @@ document.addEventListener('pointerdown',e=>{const t=e.target.closest('button,.ta
 function addW(){form('Tambah dompet',[{k:'n',l:'Nama (mis. GoPay, BCA)'},{k:'t',l:'Jenis',o:[['tunai','Tunai'],['ewallet','E-wallet'],['bank','Bank']]},{k:'i',l:'Saldo awal (Rp)',t:'number',v:0},...wext(null)],d=>{D().wallets.push({id:uid(),name:d.n,type:d.t,init:+d.i,emoji:d.e.trim(),color:d.cl})})}
 function editW(id){const w=D().wallets.find(x=>x.id==id);form('Ubah dompet',[{k:'n',l:'Nama',v:w.name},{k:'i',l:'Saldo awal (Rp)',t:'number',v:w.init},...wext(w)],d=>{Object.assign(w,{name:d.n,init:+d.i,emoji:d.e.trim(),color:d.cl})})}
 function delTx(id){
-  const d=D(),x=d.tx.find(t=>t.id==id);if(x&&x.inv)return delInv(x.inv);if(!x||!confirm('Hapus transaksi ini?'))return;
+  const d=D(),x=d.tx.find(t=>t.id==id);if(x&&x.mir)return alert('Transaksi ini otomatis dari profil yang terhubung. Hapus dari profil asalnya.');if(x&&x.inv)return delInv(x.inv);if(!x||!confirm('Hapus transaksi ini?'))return;
   if(x.tf){if(x.sv){const sv=d.savings.find(q=>q.id==x.sv);if(sv)sv.log=sv.log.filter(l=>l.id!=x.tf)}if(x.pt){const p=d.parties.find(p=>p.id==x.pt);if(p)p.ent=p.ent.filter(e=>e.id!=x.tf)}d.tx=d.tx.filter(t=>t.tf!=x.tf);save();render();return}
-  if(x.sale){const p=d.products.find(p=>p.id==x.sale.p);if(p)p.stock+=x.sale.q}
-  if(x.restock){const p=d.products.find(p=>p.id==x.restock.p);if(p)p.stock-=x.restock.q}
+  if(x.sale){const p=d.products.find(p=>p.id==x.sale.p);if(p)p.stock=rnd(p.stock+x.sale.q)}
+  if(x.restock){const p=d.products.find(p=>p.id==x.restock.p);if(p)p.stock=rnd(p.stock-x.restock.q)}
   d.tx=d.tx.filter(t=>t.id!=id);save();render();
 }
 function delP(id){if(confirm('Hapus barang ini?')){D().products=D().products.filter(p=>p.id!=id);save();render()}}
@@ -705,24 +774,25 @@ function home(d,b,ym){
   const m=d.tx.filter(x=>x.d.startsWith(ym)),tot=d.wallets.reduce((a,w)=>a+bal(w),0);
   const low=b?d.products.filter(p=>p.stock<=mn(p)):[];
   return `<div class="hero"><small>Total saldo</small><h1>${rp(tot)}</h1></div>
-  <div class="row2"><div class="card"><small>Pemasukan bulan ini</small><b class="in">${rp(sm(m,'in'))}</b></div><div class="card"><small>Pengeluaran bulan ini</small><b class="out">${rp(sm(m,'out'))}</b></div></div>
+  <div class="row2"><div class="card"><small>Pemasukan bulan ini</small><b class="in">${rp(sm(m,'in'))}</b></div><div class="card"><small>Pengeluaran bulan ini</small><b class="out">${rp(sm(m,'out'))}</b></div></div>${b?labaCard(d,ym):''}
   <div class="acts"><button class="p" onclick="addTx('in')">+ Pemasukan</button><button class="p" onclick="addTx('out')">+ Pengeluaran</button><button class="p" onclick="transfer()">Transfer</button>${b?'<button class="p" onclick="sale()">Catat penjualan</button><button class="p" onclick="restock()">Restock</button>':''}</div>
   ${low.filter(p=>!DIS.has(p.id)).map(p=>`<div class="card warn li"><span>⚠ ${esc(p.name)} tinggal ${fmtN(p.stock)} ${esc(p.unit||'pcs')}</span><button class="x" onclick="DIS.add('${p.id}');render()" aria-label="Tutup">×</button></div>`).join('')}
   <h3>Dompet</h3>${d.wallets.map(w=>`<div class="card li" onclick="editW('${w.id}')"><span style="display:flex;align-items:center">${wic(w)}${esc(w.name)}</span><b>${rp(bal(w))}</b></div>`).join('')}
   <button class="g" onclick="addW()">+ Tambah dompet</button>${CAN_DL?'<button class="g" style="margin-left:8px" onclick="exportXls()">Ekspor ke Excel</button>':''}${ordBox(d,b)}`;
 }
 function tl(d){
-  const q=(S.tq||'').toLowerCase().trim(),l=[...d.tx].filter(x=>!q||(x.c||'').toLowerCase().includes(q)||(x.n||'').toLowerCase().includes(q)).sort((a,b)=>b.d.localeCompare(a.d));
-  const i=l.filter(x=>x.t=='in'&&cn(x)).reduce((s,x)=>s+x.a,0),o=l.filter(x=>x.t=='out'&&cn(x)).reduce((s,x)=>s+x.a,0);
-  return (q?`<div class="row2"><div class="card"><small>Masuk (${l.length} transaksi)</small><b class="in">${rp(i)}</b></div><div class="card"><small>Keluar</small><b class="out">${rp(o)}</b></div></div>`:'')+(l.slice(0,200).map(x=>`<div class="card li tap" onclick="editTx('${x.id}')"><div><b>${cic(d,x.c)}${esc(x.c)}</b>${x.n?' · '+esc(x.n):''}<br><small>${x.d.replace('T',' ')} · ${esc(wname(x.w))}</small></div><div style="text-align:right"><b class="${x.t}">${x.t=='in'?'+':'-'}${rp(x.a)}</b><br><button class="x" onclick="event.stopPropagation();delTx('${x.id}')" aria-label="Hapus">×</button></div></div>`).join('')||'<p class="mu">Tidak ada transaksi.</p>');
+  const q=(S.tq||'').toLowerCase().trim(),tm=S.tm=='m',tw=S.tw||'';
+  const all=[...d.tx].filter(x=>(!q||(x.c||'').toLowerCase().includes(q)||(x.n||'').toLowerCase().includes(q))&&(!tm||x.d.startsWith(S.ym))&&(!tw||x.w==tw)).sort((a,b)=>b.d.localeCompare(a.d));
+  const i=all.filter(x=>x.t=='in'&&cn(x)).reduce((s,x)=>s+x.a,0),o=all.filter(x=>x.t=='out'&&cn(x)).reduce((s,x)=>s+x.a,0);
+  return ((q||tm||tw)?`<div class="row2"><div class="card"><small>Masuk (${all.length} transaksi)</small><b class="in">${rp(i)}</b></div><div class="card"><small>Keluar</small><b class="out">${rp(o)}</b></div></div>`:'')+(all.slice(0,200).map(x=>`<div class="card li tap" onclick="editTx('${x.id}')"><div><b>${cic(d,x.c)}${esc(x.c)}</b>${x.n?' · '+esc(x.n):''}<br><small>${x.d.replace('T',' ')} · ${esc(wname(x.w))}</small></div><div style="text-align:right"><b class="${x.t}">${x.t=='in'?'+':'-'}${rp(x.a)}</b><br><button class="x" onclick="event.stopPropagation();delTx('${x.id}')" aria-label="Hapus">×</button></div></div>`).join('')||'<p class="mu">Tidak ada transaksi.</p>')+(all.length>200?`<p class="mu">Menampilkan 200 terbaru dari ${all.length}. Pakai filter bulan atau dompet untuk melihat yang lebih lama.</p>`:'');
 }
 function txv(d){
-  const cs=[...new Set(d.tx.map(x=>x.c).filter(Boolean))];
-  return `<h3>Transaksi</h3><input list="dlq" placeholder="Cari kategori atau catatan…" value="${esc(S.tq||'')}" oninput="S.tq=this.value;$('#tl').innerHTML=tl(D())"><datalist id="dlq">${cs.map(c=>`<option value="${esc(c)}">`).join('')}</datalist><div id="tl">${tl(d)}</div>`;
+  const cs=[...new Set(d.tx.map(x=>x.c).filter(Boolean))],tm=S.tm=='m',tw=S.tw||'';
+  return `<h3>Transaksi</h3><input list="dlq" placeholder="Cari kategori atau catatan…" value="${esc(S.tq||'')}" oninput="S.tq=this.value;$('#tl').innerHTML=tl(D())"><datalist id="dlq">${cs.map(c=>`<option value="${esc(c)}">`).join('')}</datalist><div class="chips"><button class="${tm?'g':'p'}" onclick="S.tm='';save();render()">Semua</button><button class="${tm?'p':'g'}" onclick="S.tm='m';save();render()">Bulan ${S.ym}</button><select style="width:auto" onchange="S.tw=this.value;save();render()"><option value="">Semua dompet</option>${d.wallets.map(w=>`<option value="${w.id}" ${w.id==tw?'selected':''}>${esc(w.name)}</option>`).join('')}</select></div><div id="tl">${tl(d)}</div>`;
 }
 function stok(d){
   return `<h3>Stok barang</h3>${[...d.products].sort((a,b)=>(a.stock<=0)-(b.stock<=0)).map(p=>`<div class="card"><div class="li"><b>${esc(p.name)}</b><span><button class="x" onclick="editP('${p.id}')">✎</button><button class="x" onclick="delP('${p.id}')" aria-label="Hapus">×</button></span></div>
-  <div class="li"><span class="${p.stock<=mn(p)?'out':''}">Stok: <b>${fmtN(p.stock)} ${esc(p.unit||'pcs')}</b></span><span>Jual ${rp(p.price)}/${esc(p.unit||'pcs')}${p.unit2?' · '+rp(uprice(p,p.unit2))+'/'+esc(p.unit2):''}</span></div>
+  <div class="li"><span class="${p.stock<=mn(p)?'out':''}">Stok: <b>${fmtN(p.stock)} ${esc(p.unit||'pcs')}</b>${p.unit2?`<br><small class="mu">= ${fmtN(p.stock*(p.conv||1))} ${esc(p.unit2)}</small>`:''}</span><span>Jual ${rp(p.price)}/${esc(p.unit||'pcs')}${p.unit2?' · '+rp(uprice(p,p.unit2))+'/'+esc(p.unit2):''}</span></div>
   <div class="li"><small>Nilai stok ${rp(p.stock*p.cost)}</small><small>Notif ≤ ${mn(p)} · Beli ${rp(p.cost)}</small></div>
   <button class="g" onclick="restock('${p.id}')">Restock</button> <button class="g" onclick="prodHist('${p.id}')">Riwayat</button></div>`).join('')||'<p class="mu">Belum ada barang. Tambahkan barang pertama.</p>'}
   <button class="p" onclick="addP()">+ Tambah barang</button>`;
@@ -747,7 +817,7 @@ function render(){
   const b=d.type=='biz',tabs=[['home','Beranda'],['tx','Transaksi'],...(b?[['ord','Pemesanan']]:[]),['pt','Pihak'],...(b?[['stok','Stok'],['staf','Staf']]:[]),['ana','Analisis'],...(b?[]:[['sv','Tabungan']])];
   if(!tabs.some(t=>t[0]==S.tab))S.tab='home';
   $('#ttl').textContent=(b?'🏪 ':'👤 ')+d.name;
-  $('#ym').hidden=!!S.sub||!['home','ana','staf'].includes(S.tab);$('#ym').value=S.ym;
+  $('#ym').hidden=!!S.sub||!['home','tx','ana','staf'].includes(S.tab);$('#ym').value=S.ym;
   $('#nav').innerHTML=tabs.map(t=>`<button class="${S.tab==t[0]?'on':''}" onclick="S.tab='${t[0]}';S.sub=null;save();render()">${t[1]}</button>`).join('');
   $('#nav').style.display=S.sub&&S.sub.k=='inv'?'none':'';
   $('#v').innerHTML=S.sub?(S.sub.k=='inv'?invv(d):S.sub.k=='pt'?ptd(d):svd(d)):({home,tx:txv,ord:ordv,pt:pty,stok,staf,ana,sv:svl})[S.tab](d,b,S.ym);
